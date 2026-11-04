@@ -1,0 +1,9 @@
+# Build-Ausgabe (große ZIPs, Node-Binaries)
+dist/
+node_modules/
+
+# Aufnahmen mit privaten Fahrdaten
+*.log
+
+# macOS
+.DS_Store

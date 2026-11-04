@@ -1,0 +1,56 @@
+MOTORSOUND – Verbrennerklang aus Tesla-Live-Daten (Testversion)
+================================================================
+
+Du musst nichts installieren. Node.js ist im Ordner "runtime" schon dabei.
+
+1) AUSPACKEN
+   ZIP-Datei entpacken (Doppelklick) und den Ordner z. B. auf den Schreibtisch legen.
+
+2) STARTEN
+   Demo ohne Auto:   "Demo ohne Auto" doppelklicken.
+                     Spielt eine echte Fahrt ab (Gaspedal, Tempo, Akkuleistung).
+   Live im Tesla:    Laptop ins WLAN "S3XY_OBD" (Passwort 12345678) einbuchen,
+                     dann "Motorsound starten" doppelklicken.
+                     Voraussetzung: In der S3XY-App ist die ScanMyTesla-Unterstützung an,
+                     und kein anderes Gerät (Handy mit ScanMyTesla) ist gerade verbunden.
+
+   Es öffnet sich ein schwarzes Fenster (die "Bridge") und danach der Browser
+   unter http://localhost:8787. Im Browser:
+     - "Motor starten" klicken
+     - Datenquelle "Live (Bridge)" wählen (gilt auch für die Demo)
+   Das schwarze Fenster offen lassen. Schließen = beenden.
+
+3) ERSTER START AUF DEM MAC (Gatekeeper)
+   Die Startdatei ist nicht von Apple signiert. macOS meldet deshalb
+   "kann nicht geöffnet werden" oder "nicht verifiziert".
+     a) Meldung mit "Fertig"/"OK" schließen.
+     b) Systemeinstellungen > Datenschutz & Sicherheit, ganz nach unten scrollen,
+        bei "Motorsound starten" auf "Trotzdem öffnen" klicken, mit Passwort bestätigen.
+        (Bei älterem macOS reicht: Rechtsklick auf die Datei > Öffnen > Öffnen.)
+     c) Für "Demo ohne Auto" einmal genauso.
+   Schneller, wenn man Terminal mag (einmalig, Pfad anpassen):
+        xattr -dr com.apple.quarantine ~/Desktop/Motorsound-mac
+   Fragt macOS "node möchte Geräte im lokalen Netzwerk finden": ERLAUBEN.
+   Sonst kommen im Live-Modus keine Daten vom Commander an.
+   (Falls schon abgelehnt: Systemeinstellungen > Datenschutz & Sicherheit >
+    Lokales Netzwerk > Terminal einschalten.)
+
+4) ERSTER START UNTER WINDOWS
+   SmartScreen ("Der Computer wurde durch Windows geschützt"):
+   "Weitere Informationen" > "Trotzdem ausführen".
+   Windows-Firewall fragt nach Node.js: "Private Netzwerke" erlauben.
+   Hinweis: ZIP vorher entpacken, nicht direkt aus der ZIP-Vorschau starten.
+
+5) WENN ES NICHT KLAPPT
+   - Im schwarzen Fenster steht "keine Daten von 192.168.4.1": Laptop ist nicht im
+     WLAN S3XY_OBD, ScanMyTesla-Modus aus, oder ein anderes Gerät hängt am Commander.
+     VPN ausschalten.
+   - Browser zeigt nichts: http://localhost:8787 von Hand öffnen.
+   - "EADDRINUSE": Die Bridge läuft schon in einem anderen Fenster. Das schließen.
+   - Kein Ton: einmal ins Browserfenster klicken, Lautstärke prüfen.
+
+Sound über Bluetooth ins Auto hat rund 1 Sekunde Verzögerung. Für den Test
+am besten Laptop-Lautsprecher oder Kopfhörer, oder per Kabel/AUX.
+
+Rückmeldung bitte: Rechner/OS, was funktioniert hat, was nicht,
+und gern ein Handyvideo vom Klang.
