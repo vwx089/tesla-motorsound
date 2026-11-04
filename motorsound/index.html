@@ -199,7 +199,9 @@ class EngineProc extends AudioWorkletProcessor {
         if (!crossed) continue;
         if (p.cut > 0.5) { if (this.rnd() < 0.18) this.spawn(0.9 + this.rnd(), banks[c], 1); continue; }
         const lope = pr.lope * (1 - load) * (rpm < 1400 ? 1 : 0.3);
-        let a = (0.16 + 0.84 * load) * this.cylGain[c] * (1 + (this.rnd() - 0.5) * (0.1 + lope));
+        // Schub ist leiser als Zug, aber nicht stumm: Grundpegel steigt mit der Drehzahl
+        const base = 0.3 + 0.15 * Math.min(1, rpm / pr.redline);
+        let a = (base + (1 - base) * load) * this.cylGain[c] * (1 + (this.rnd() - 0.5) * (0.1 + lope));
         this.spawn(a, banks[c], 0);
         if (p.overrun > 0 && this.rnd() < 0.05 * p.overrun * pr.crackle) this.spawn(0.6 + 1.4 * this.rnd(), banks[c], 1);
       }
@@ -227,7 +229,7 @@ class EngineProc extends AudioWorkletProcessor {
         this.lpLoop[b] += (rd - this.lpLoop[b]) * pr.loopDamp;
         const y = xs[b] + pr.fb * this.lpLoop[b];
         d[w] = y;
-        const fc = pr.lp * (0.45 + 0.75 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline));
+        const fc = pr.lp * (0.6 + 0.6 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline));
         const a1 = 1 - Math.exp(-2 * Math.PI * fc / sr);
         this.m1[b] += (y - this.m1[b]) * a1; this.m2[b] += (this.m1[b] - this.m2[b]) * a1;
         ys[b] = this.m2[b] * 0.7 + y * pr.raw;
@@ -342,7 +344,13 @@ function simStep(dt) {
   const m = 2000, P = 340000, Fmax = 11000;
   let F = 0;
   if (sim.gear === "D") F = pedal * Math.min(Fmax, P / Math.max(sim.v, 1));
-  const regen = sim.gear === "D" && pedal < 0.05 && sim.v > 0.5 ? Math.min(4500, 60000 / Math.max(sim.v, 3)) : 0;
+  // Rekuperation (leistungsbegrenzt) plus Motorbremse des virtuellen Verbrenners: kleiner Gang und hohe Drehzahl bremsen stärker
+  let regen = 0;
+  if (sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
+    regen = Math.min(4500, 80000 / Math.max(sim.v, 3));
+    if (eng.prof) { const G = gb(); regen += (25 + 0.018 * eng.rpm) * G.r[eng.gear - 1] * G.f / G.w * Math.min(1, sim.v / 8); }
+    regen = Math.min(regen, 6500);
+  }
   const drag = 0.5 * 1.2 * 0.23 * 2.2 * sim.v * sim.v + 180;
   const brakeF = sim.brake * 16000;
   const a = (F - regen - drag - brakeF) / m;
