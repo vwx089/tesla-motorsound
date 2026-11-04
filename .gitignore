@@ -1,6 +1,7 @@
 # Build-Ausgabe (große ZIPs, Node-Binaries)
 dist/
 node_modules/
+packaging/.cache/
 
 # Aufnahmen mit privaten Fahrdaten
 *.log
