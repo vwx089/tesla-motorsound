@@ -376,13 +376,17 @@ function engineStep(dt, now) {
     eng.gear = 1;
     target = pr.idle + (!driving ? pedal * (pr.redline - pr.idle) : 0);
   } else {
-    const upAt = mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
-    const up = mode.up[0] + (upAt - mode.up[0]) * Math.pow(pedal, 1.3);
+    // Vollgas (über der Kickdown-Schwelle): in jedem Modus bis kurz vor die Rotlinie ausdrehen
+    const wot = pedal > mode.kick;
+    const upAt = wot ? pr.redline - 150 : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
+    const up = wot ? upAt : mode.up[0] + (upAt - mode.up[0]) * Math.pow(pedal, 1.3);
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     const canShift = now - eng.lastShift > 450;
     const cur = gearRpm(eng.gear, vms);
+    // Zurückschalten nur, wenn der kleinere Gang nicht sofort wieder hochschalten müsste (sonst Pendeln)
+    const lower = eng.gear > 1 ? gearRpm(eng.gear - 1, vms) : Infinity;
     if (canShift && cur > up && eng.gear < gb().r.length) { eng.gear++; eng.lastShift = now; eng.cutUntil = now + mode.cutMs; }
-    else if (canShift && eng.gear > 1 && (cur < down || (pedal > mode.kick && gearRpm(eng.gear - 1, vms) < pr.redline - 900))) { eng.gear--; eng.lastShift = now; eng.blip = now + 160; }
+    else if (canShift && lower < up - 600 && (cur < down || (wot && lower < pr.redline - 900))) { eng.gear--; eng.lastShift = now; eng.blip = now + 160; }
     target = gearRpm(eng.gear, vms);
     if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
