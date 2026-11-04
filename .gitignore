@@ -7,3 +7,6 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Demo-Aufnahme für build.sh (gefiltert, keine GPS-Daten)
+!packaging/demo-fahrt.log
