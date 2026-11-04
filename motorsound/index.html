@@ -200,7 +200,7 @@ class EngineProc extends AudioWorkletProcessor {
         if (p.cut > 0.5) { if (this.rnd() < 0.18) this.spawn(0.9 + this.rnd(), banks[c], 1); continue; }
         const lope = pr.lope * (1 - load) * (rpm < 1400 ? 1 : 0.3);
         // Schub ist leiser als Zug, aber nicht stumm: Grundpegel steigt mit der Drehzahl
-        const base = 0.3 + 0.15 * Math.min(1, rpm / pr.redline);
+        const base = 0.28 + 0.4 * Math.min(1, rpm / 4500);
         let a = (base + (1 - base) * load) * this.cylGain[c] * (1 + (this.rnd() - 0.5) * (0.1 + lope));
         this.spawn(a, banks[c], 0);
         if (p.overrun > 0 && this.rnd() < 0.05 * p.overrun * pr.crackle) this.spawn(0.6 + 1.4 * this.rnd(), banks[c], 1);
@@ -229,7 +229,7 @@ class EngineProc extends AudioWorkletProcessor {
         this.lpLoop[b] += (rd - this.lpLoop[b]) * pr.loopDamp;
         const y = xs[b] + pr.fb * this.lpLoop[b];
         d[w] = y;
-        const fc = pr.lp * (0.6 + 0.6 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline));
+        const fc = pr.lp * (0.75 + 0.45 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline));
         const a1 = 1 - Math.exp(-2 * Math.PI * fc / sr);
         this.m1[b] += (y - this.m1[b]) * a1; this.m2[b] += (this.m1[b] - this.m2[b]) * a1;
         ys[b] = this.m2[b] * 0.7 + y * pr.raw;
@@ -347,9 +347,9 @@ function simStep(dt) {
   // Rekuperation (leistungsbegrenzt) plus Motorbremse des virtuellen Verbrenners: kleiner Gang und hohe Drehzahl bremsen stärker
   let regen = 0;
   if (sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
-    regen = Math.min(4500, 80000 / Math.max(sim.v, 3));
-    if (eng.prof) { const G = gb(); regen += (25 + 0.018 * eng.rpm) * G.r[eng.gear - 1] * G.f / G.w * Math.min(1, sim.v / 8); }
-    regen = Math.min(regen, 6500);
+    regen = Math.min(5000, 100000 / Math.max(sim.v, 3));
+    if (eng.prof) { const G = gb(); regen += (40 + 0.03 * eng.rpm) * G.r[eng.gear - 1] * G.f / G.w * Math.min(1, sim.v / 8); }
+    regen = Math.min(regen, 8000);
   }
   const drag = 0.5 * 1.2 * 0.23 * 2.2 * sim.v * sim.v + 180;
   const brakeF = sim.brake * 16000;
