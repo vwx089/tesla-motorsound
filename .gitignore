@@ -11,3 +11,9 @@ packaging/.cache/
 
 # Demo-Aufnahme für build.sh (gefiltert, keine GPS-Daten)
 !packaging/demo-fahrt.log
+
+# iOS: wird von xcodegen erzeugt
+ios/Motorsound.xcodeproj/
+ios/Sources/Info.plist
+ios/build/
+ios/screenshot.png

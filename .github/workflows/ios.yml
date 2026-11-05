@@ -1,0 +1,99 @@
+name: iOS-App bauen
+
+# Baut die iOS-App ohne Signatur (SideStore/AltStore signieren beim Installieren selbst).
+# Auf main: veröffentlicht die .ipa als Release und aktualisiert die SideStore-Quelle (source.json).
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", "motorsound/index.html", "packaging/demo-fahrt.log", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", "motorsound/index.html", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+
+      - name: Version festlegen
+        run: |
+          echo "BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "VERSION=0.1.${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Projekt erzeugen und bauen
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -project Motorsound.xcodeproj -scheme Motorsound -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -n 40
+          APP=build/Build/Products/Release-iphoneos/Motorsound.app
+          test -f "$APP/index.html" && test -f "$APP/demo-fahrt.log"
+          mkdir -p out/Payload && cp -R "$APP" out/Payload/
+          (cd out && zip -qry Motorsound.ipa Payload)
+          ls -l out/Motorsound.ipa
+
+      - name: SideStore-Quelle erzeugen
+        run: |
+          REPO="${{ github.repository }}"
+          SIZE=$(stat -f%z ios/out/Motorsound.ipa)
+          python3 - "$REPO" "$VERSION" "$BUILD" "$SIZE" > ios/out/source.json <<'PY'
+          import json, sys, datetime
+          repo, version, build, size = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+          base = f"https://github.com/{repo}"
+          print(json.dumps({
+            "name": "Motorsound",
+            "identifier": "de.stefankauselmann.motorsound.source",
+            "subtitle": "Verbrennerklang aus Tesla-Live-Daten",
+            "website": base,
+            "apps": [{
+              "name": "Motorsound",
+              "bundleIdentifier": "de.stefankauselmann.motorsound",
+              "developerName": "vwx089",
+              "subtitle": "Verbrennerklang aus Tesla-Live-Daten",
+              "localizedDescription": "Synthetischer Motorsound aus Gaspedal, Tempo und Akkuleistung, live vom S3XY Commander (WLAN S3XY_OBD) oder als Demo.",
+              "iconURL": f"https://raw.githubusercontent.com/{repo}/main/ios/icon.png",
+              "tintColor": "F0962A",
+              "category": "utilities",
+              "versions": [{
+                "version": version,
+                "buildVersion": build,
+                "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "size": size,
+                "downloadURL": f"{base}/releases/download/build-{build}/Motorsound.ipa",
+                "minOSVersion": "17.0",
+              }],
+              "appPermissions": {
+                "entitlements": [],
+                "privacy": {"NSLocalNetworkUsageDescription": "Motorsound liest die Fahrzeugdaten vom S3XY Commander im WLAN S3XY_OBD."},
+              },
+            }],
+            "news": [],
+          }, indent=2, ensure_ascii=False))
+          PY
+          cat ios/out/source.json
+
+      - name: Als Artefakt ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Motorsound-${{ env.VERSION }}
+          path: |
+            ios/out/Motorsound.ipa
+            ios/out/source.json
+
+      - name: Release veröffentlichen
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-$BUILD" ios/out/Motorsound.ipa ios/out/source.json \
+            --title "Motorsound $VERSION" --notes "Automatisch gebaut aus ${GITHUB_SHA::7}. Unsigniert, für SideStore/AltStore." --latest
