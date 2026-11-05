@@ -161,6 +161,7 @@ class EngineProc extends AudioWorkletProcessor {
     this.lpLoop = [0, 0]; this.m1 = [0, 0]; this.m2 = [0, 0]; this.dc = [0, 0]; this.dcx = [0, 0];
     this.ib = 0; this.il = 0; this.seed = 22222;
     this.boost = 0; this.tph = 0; this.bov = 0; this.bovLp = 0;
+    this.tickEnv = 0; this.tickLp = 0; this.tickPh = 0;
     this.port.onmessage = (e) => {
       if (e.data.profile) this.setProfile(e.data.profile);
       if (e.data.state) Object.assign(this.p, e.data.state);
@@ -173,6 +174,8 @@ class EngineProc extends AudioWorkletProcessor {
   setProfile(pr) {
     this.prof = pr;
     this.cylGain = pr.offsets.map(() => 0.85 + 0.3 * this.rnd());
+    // Einzeldrossel-Ansaugung: feste Resonanzen, durch die die Motorordnungen beim Hochdrehen hindurchlaufen
+    this.form = pr.itb ? pr.itb.formants.map(([f, q, gain, high]) => ({ g: Math.tan(Math.PI * Math.min(f, this.sr * 0.45) / this.sr), k: 1 / q, gain, high, s1: 0, s2: 0 })) : null;
   }
   spawn(amp, bank, pop) {
     for (const q of this.pulses) if (!q.on) { q.on = true; q.age = 0; q.amp = amp; q.bank = bank; q.pop = pop; return; }
@@ -197,7 +200,7 @@ class EngineProc extends AudioWorkletProcessor {
         const o = offs[c];
         const crossed = wrapped ? (o > prev || o <= this.phase) : (o > prev && o <= this.phase);
         if (!crossed) continue;
-        if (p.cut > 0.5) { if (this.rnd() < 0.18) this.spawn(0.9 + this.rnd(), banks[c], 1); continue; }
+        if (p.cut > 0.5) { if (this.rnd() < (pr.cutPop === undefined ? 0.18 : pr.cutPop)) this.spawn(0.9 + this.rnd(), banks[c], 1); continue; }
         const lope = pr.lope * (1 - load) * (rpm < 1400 ? 1 : 0.3);
         // Schub ist leiser als Zug, aber nicht stumm: Grundpegel steigt mit der Drehzahl
         const base = 0.28 + 0.4 * Math.min(1, rpm / 4500);
@@ -229,10 +232,12 @@ class EngineProc extends AudioWorkletProcessor {
         this.lpLoop[b] += (rd - this.lpLoop[b]) * pr.loopDamp;
         const y = xs[b] + pr.fb * this.lpLoop[b];
         d[w] = y;
-        const fc = pr.lp * (0.75 + 0.45 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline));
+        // Abgasklappe (nur Profile mit flap): zu = dumpfer, öffnet mit Drehzahl oder bei hoher Last
+        const flap = pr.flap ? 0.55 + 0.45 * Math.max(Math.min(1, Math.max(0, (rpm - pr.flap[0]) / (pr.flap[1] - pr.flap[0]))), Math.min(1, Math.max(0, (load - 0.6) / 0.25))) : 1;
+        const fc = pr.lp * (0.75 + 0.45 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline)) * flap;
         const a1 = 1 - Math.exp(-2 * Math.PI * fc / sr);
         this.m1[b] += (y - this.m1[b]) * a1; this.m2[b] += (this.m1[b] - this.m2[b]) * a1;
-        ys[b] = this.m2[b] * 0.7 + y * pr.raw;
+        ys[b] = this.m2[b] * 0.7 + y * pr.raw * flap;
       }
       this.dw = (w + 1) & 4095;
       // Ansaugrauschen: Bandpass-Rauschen, mit Zündfrequenz moduliert, nur bei offener Drossel
@@ -259,9 +264,33 @@ class EngineProc extends AudioWorkletProcessor {
         this.bov *= Math.exp(-1 / (0.35 * sr));
         turbo = (whistle + pssh) * pr.turbo;
       }
-      let l = ys[0] + ys[1] * pr.cross + intake + mech + turbo, r = ys[1] + ys[0] * pr.cross + intake + mech + turbo;
+      // Sauger mit Einzeldrosseln: pro Ansaugtakt ein Luftpuls, der die Ansaugresonanzen anregt. Die Luftmasse wächst mit
+      // Drehzahl und Drosselöffnung, deshalb wird das Ansaugen oben herum zum dominierenden, metallischen Anteil.
+      let itb = 0;
+      if (this.form) {
+        const it = pr.itb, ph = (this.phase * nc + 0.5) % 1, rn = Math.min(1.05, rpm / pr.redline);
+        const c = Math.floor(this.phase * nc) % nc;
+        const w = ph < it.duty ? (0.5 - 0.5 * Math.cos(2 * Math.PI * ph / it.duty)) * this.cylGain[c] : 0;
+        const flow = (it.floor + (1 - it.floor) * this.thr * Math.sqrt(this.thr)) * rn * rn;
+        const x = w * flow * (1 + (this.rnd() - 0.5) * it.jitter);
+        const hs = Math.min(1, Math.max(0, (rpm - it.stage[0]) / (it.stage[1] - it.stage[0]))), high = hs * hs * (3 - 2 * hs);
+        for (const f of this.form) {
+          const h = (x - (f.k + f.g) * f.s1 - f.s2) / (1 + f.g * (f.g + f.k));
+          const b = f.g * h + f.s1; f.s1 = f.g * h + b; f.s2 += 2 * f.g * b;
+          itb += b * f.gain * (1 + f.high * high);
+        }
+        itb *= it.gain;
+        // Ventiltrieb (Schlepphebel ohne Hydraulik): helles Ticken, zwei Ventilereignisse pro Zündabstand
+        const tp = this.phase * nc * 2 % 1;
+        if (tp < this.tickPh) this.tickEnv = 0.7 + 0.6 * this.rnd();
+        this.tickPh = tp;
+        this.tickEnv *= it.tickDecay;
+        const nt = this.rnd() * 2 - 1; this.tickLp += (nt - this.tickLp) * 0.55;
+        itb += (nt - this.tickLp) * this.tickEnv * it.tick;
+      }
+      let l = ys[0] + ys[1] * pr.cross + intake + mech + turbo + itb, r = ys[1] + ys[0] * pr.cross + intake + mech + turbo + itb;
       if (!pr.stereo) { const m = (ys[0] + ys[1]) * 0.75; l = m + intake + mech + turbo; r = l; }
-      const drive = 1.2 + 2.5 * load;
+      const drive = 1.2 + (pr.driveLoad === undefined ? 2.5 : pr.driveLoad) * load;
       l = Math.tanh(l * drive) / Math.tanh(drive); r = Math.tanh(r * drive) / Math.tanh(drive);
       // DC-Sperre
       this.dc[0] = l - this.dcx[0] + 0.995 * this.dc[0]; this.dcx[0] = l;
@@ -286,6 +315,19 @@ const ENGINES = {
     idle: 700, redline: 6800, limiter: 6900, inertia: 0.85,
     // Original-Antrieb: ZF 6HP26A Tiptronic mit Wandler, Achsübersetzung 3,317 (Audi-Datenblatt), 255/40 R19
     ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.317, wheel: 0.335, box: "zf6", vmax: 250 },
+  // 911 GT3 RS (992), 4,0-l-Saugmotor. Zündfolge 1-6-2-4-3-5: 120° gleichmäßig und immer abwechselnd linke/rechte Bank,
+  // also je Bank 240° Abstand. Offiziell (Porsche): 386 kW bei 8500, 465 Nm bei 6300, 9000 1/min, PDK-Übersetzungen, Achse 4,27.
+  // Akustikwerte (Rohrlaufzeiten, Resonanzen, Klappe) sind Schätzwerte aus der Geometrie, keine Messwerte.
+  gt3rs: { name: "Boxer-Sechszylinder 4.0 Sauger (911 GT3 RS 992)", offsets: [0, 1/6, 2/6, 3/6, 4/6, 5/6], banks: [0, 1, 0, 1, 0, 1],
+    pipe: [3.2, 3.45], fb: -0.35, loopDamp: 0.7, lp: 3200, raw: 0.28, tau: 0.75, noise: 0.5, lope: 0.18, crackle: 0.35, intake: 0.9, cross: 0.82, stereo: true,
+    cutPop: 0.03, flap: [3000, 4400], driveLoad: 1.6,
+    itb: { duty: 0.22, floor: 0.06, jitter: 0.12, gain: 0.55, stage: [5800, 7000], tick: 0.011, tickDecay: 0.992,
+      formants: [[420, 3, 1.0, 0], [1150, 4, 0.9, 0.5], [2400, 4, 0.8, 1.6], [3900, 3, 0.35, 2.2]] },
+    idle: 900, redline: 9000, limiter: 9000, inertia: 0.6, launch: 4500, launchV: 12,
+    ratios: [3.75, 2.38, 1.72, 1.34, 1.11, 0.96, 0.84], final: 4.27, wheel: 0.36, box: "pdk7", vmax: 296,
+    // Nur Testmodus: echte Fahrphysik statt Tesla-Modell. Drehmoment: Stützstellen außerhalb der beiden Datenblatt-Punkte geschätzt.
+    sim: { m: 1525, cda: 0.85, rr: 300, eta: 0.84, grip: 15200, brake: 19000, fric: [15, 0.008],
+      torque: [[1000, 230], [2000, 320], [3000, 370], [4000, 400], [5000, 430], [6300, 465], [7500, 450], [8500, 434], [9000, 410]] } },
   v8flat: { name: "V8 Flatplane (Supersportwagen)", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [4.2, 4.6], fb: -0.45, loopDamp: 0.6, lp: 2200, raw: 0.2, tau: 1.0, noise: 0.45, lope: 0.2, crackle: 1.5, intake: 1.0, cross: 0.4, stereo: true,
     idle: 1000, redline: 8500, limiter: 8700, inertia: 0.6 },
@@ -342,25 +384,36 @@ const sim = { v: 0, gas: 0, brake: 0, gear: "D", hold: 0, slider: 0, demo: null 
 function simStep(dt) {
   if (sim.demo) sim.demo(dt);
   const pedal = Math.max(sim.gas, sim.slider);
-  const m = 2000, P = 340000, Fmax = 11000;
+  const S = eng.prof && eng.prof.sim;
+  const m = S ? S.m : 2000, P = 340000, Fmax = 11000;
   let F = 0;
   if (sim.gear === "D") {
     // Pedal = Wunschtempo (wie ein Fahrer, der das Pedal hält, bis das Tempo passt): bis zum Zieltempo zieht
     // der Antrieb mit bis zu pedal × Volllast, dann nur noch so viel, wie Fahrwiderstand + sanftes Einpendeln brauchen.
     // Vorher wuchs das Tempo bei konstantem Pedal minutenlang weiter (20 % Pedal → ~200 km/h).
     const vt = pedal * ((eng.prof && eng.prof.vmax) || 260) / 3.6;
+    if (S) {
+      // Antrieb über Drehmomentkurve, aktuellen Gang und Haftgrenze
+      const G = gb(), T = S.torque; let tq = T[T.length - 1][1];
+      for (let i = 0; i < T.length; i++) if (eng.rpm <= T[i][0]) { tq = i ? T[i - 1][1] + (T[i][1] - T[i - 1][1]) * (eng.rpm - T[i - 1][0]) / (T[i][0] - T[i - 1][0]) : T[0][1]; break; }
+      const hold = 0.6 * S.cda * sim.v * sim.v + S.rr + m * 0.6 * (vt - sim.v);
+      F = Math.max(0, Math.min(pedal * Math.min(S.grip, tq * G.r[eng.gear - 1] * G.f * S.eta / G.w), hold));
+    } else {
     const hold = 0.3036 * sim.v * sim.v + 180 + m * 0.6 * (vt - sim.v);
     F = Math.max(0, Math.min(pedal * Math.min(Fmax, P / Math.max(sim.v, 1)), hold));
+    }
   }
   // Rekuperation (leistungsbegrenzt) plus Motorbremse des virtuellen Verbrenners: kleiner Gang und hohe Drehzahl bremsen stärker
   let regen = 0;
-  if (sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
+  if (S && sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
+    const G = gb(); regen = (S.fric[0] + S.fric[1] * eng.rpm) * G.r[eng.gear - 1] * G.f / G.w * Math.min(1, sim.v / 8);   // nur Motorbremse, keine Rekuperation
+  } else if (sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
     regen = Math.min(5000, 100000 / Math.max(sim.v, 3));
     if (eng.prof) { const G = gb(); regen += (40 + 0.03 * eng.rpm) * G.r[eng.gear - 1] * G.f / G.w * Math.min(1, sim.v / 8); }
     regen = Math.min(regen, 8000);
   }
-  const drag = 0.5 * 1.2 * 0.23 * 2.2 * sim.v * sim.v + 180;
-  const brakeF = sim.brake * 16000;
+  const drag = S ? 0.6 * S.cda * sim.v * sim.v + S.rr : 0.5 * 1.2 * 0.23 * 2.2 * sim.v * sim.v + 180;
+  const brakeF = sim.brake * (S ? S.brake : 16000);
   const a = (F - regen - drag - brakeF) / m;
   sim.v = Math.max(0, sim.v + a * dt);
   car.speed = sim.v * 3.6; car.pedal = pedal; car.gear = sim.gear; car.brake = sim.brake > 0 ? 1 : 0;
@@ -395,6 +448,15 @@ const TIP = {
   track:   { upMs: 320, downMs: 450, kickDelay: 0.2,  fart: 0, blip: 0.6,  lockGear: 2, upCut: 0.75 },
 };
 const STALL = 2600;
+/* Porsche PDK, 7 Gänge, GT-Abstimmung. Belegt ist nur Porsches Angabe „unter 100 ms“ für manuelles Hochschalten; alle anderen
+   Zeiten und die Schaltkennfelder sind Schätzwerte. Doppelkupplungs-Prinzip wie DSG: gerade/ungerade Welle, keine Zugkraftlücke.
+   brakeDown = Drehzahl, unter der beim Bremsen zurückgeschaltet wird (hält den Motor im Drehmomentband). */
+const PDK = {
+  comfort: { up: [2300, 5200], down: [1300, 3000], kick: 0.9,  upMs: 240, downMs: 380, kickDelay: 0.25, fart: 0,  blip: 0.45, hold: 0.8, coastGap: 800,  upCut: 0.6, brakeDown: 1900 },
+  sport:   { up: [3500, -200], down: [2200, 5200], kick: 0.75, upMs: 140, downMs: 260, kickDelay: 0.15, fart: 22, blip: 0.75, hold: 2.5, coastGap: 1000, upCut: 0.5, brakeDown: 3800 },
+  track:   { up: [5200, -100], down: [3600, 6500], kick: 0.7,  upMs: 90,  downMs: 180, kickDelay: 0.08, fart: 18, blip: 0.95, hold: 6.0, coastGap: 1400, upCut: 0.4, brakeDown: 5500 },
+};
+const BOXES = { zf6: TIP, pdk7: PDK };
 const eng = { rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, wotT: 0, limiter: false, prof: null,
   shift: null, next: 0, jerkT: -1, wasCoast: 0 };
 const gb = () => ({ r: eng.prof.ratios || RATIOS, f: eng.prof.final || FINAL, w: eng.prof.wheel || WHEEL_R });
@@ -407,7 +469,8 @@ function startShift(to, now, mode, wot) {
   eng.gear = to; eng.lastShift = now;
 }
 function engineStep(dt, now) {
-  const pr = eng.prof, mode = pr.box ? { ...SHIFT[shiftSel.value], ...TIP[shiftSel.value] } : SHIFT[shiftSel.value];
+  const pr = eng.prof, mode = pr.box ? { ...SHIFT[shiftSel.value], ...BOXES[pr.box][shiftSel.value] } : SHIFT[shiftSel.value];
+  const conv = pr.box === "zf6", pdk = pr.box === "pdk7";
   const kwMax = +tqMaxEl.value;
   const vms = car.speed / 3.6, pedal = Math.min(1, Math.max(0, car.pedal));
   // Last aus der Akku-Leistung (der Commander liefert 0x132, aber nicht die Drehmoment-Frames 0x108/0x186)
@@ -422,7 +485,15 @@ function engineStep(dt, now) {
     // Vollgas (über der Kickdown-Schwelle): in jedem Modus bis kurz vor die Rotlinie ausdrehen
     const wot = pedal > mode.kick;
     // Volllast: so früh auslösen, dass die Drehzahl während der Momentenphase nicht in den Begrenzer läuft
-    const upAt = wot ? pr.redline - 150 - (pr.box ? 250 : 0) : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
+    // PDK: Schaltpunkt aus dem Drehzahlanstieg vorausberechnen, damit der Motor die 9000 ausnutzt, ohne in den Begrenzer zu laufen
+    let lead = 150;
+    if (pdk) {
+      const c = gearRpm(eng.gear, vms), r = (c - (eng.prevCur === undefined ? c : eng.prevCur)) / Math.max(dt, 1e-3);
+      eng.prevCur = c;
+      if (!eng.shift) eng.rate = (eng.rate || 0) * 0.8 + Math.max(0, r) * 0.2;
+      lead = 20 + eng.rate * 0.025;   // ein Frame plus Reaktionszeit des Steuergeräts; in der Momentenphase steht die Drehzahl
+    }
+    const upAt = wot ? pr.redline - lead - (conv ? 250 : 0) : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
     const up = wot ? upAt : mode.up[0] + (upAt - mode.up[0]) * Math.pow(pedal, 1.3);
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     // Gas weg: Gang erst halten (Motorbremse, Schubknallen), dann gemächlich Gang für Gang hoch
@@ -443,7 +514,7 @@ function engineStep(dt, now) {
     if (eng.shift && now - eng.shift.t0 >= eng.shift.dur) eng.shift = null;
     if (!eng.shift) {
       const canShift = now - eng.lastShift > (coasting ? mode.coastGap : 120);
-      const upBlocked = coasting && eng.coastT < mode.hold && cur < pr.redline - 150;
+      const upBlocked = coasting && (eng.coastT < mode.hold || (mode.brakeDown && car.brake)) && cur < pr.redline - 150;
       // Kickdown: kleinster Gang, der noch unter der Rotlinie bleibt
       let kickTo = eng.gear;
       if (wot && reacted) while (kickTo > 1 && gearRpm(kickTo - 1, vms) < pr.redline - 900 && gearRpm(kickTo - 1, vms) < up - 600) kickTo--;
@@ -455,20 +526,23 @@ function engineStep(dt, now) {
         startShift(eng.gear + 1, now, mode, wot);
       } else if (kickTo < eng.gear) {
         // gleiche Welle (beide gerade oder beide ungerade) und mehr als ein Gang: erst eins runter, dann weiter
-        if (!pr.box && eng.gear - kickTo > 1 && (eng.gear - kickTo) % 2 === 0) { eng.next = kickTo; startShift(eng.gear - 1, now, mode, wot); }
+        if (!conv && eng.gear - kickTo > 1 && (eng.gear - kickTo) % 2 === 0) { eng.next = kickTo; startShift(eng.gear - 1, now, mode, wot); }
         else startShift(kickTo, now, mode, wot);
       } else if (canShift && reacted && lower < up - 600 && cur < down) {
         startShift(eng.gear - 1, now, mode, wot);
+      } else if (mode.brakeDown && car.brake && now - eng.lastShift > 120 && cur < mode.brakeDown && lower < (eng.gear === 2 ? 5500 : pr.redline - 1500)) {
+        // Beim Bremsen schaltet das PDK schneller zurück als im Zug, in den 1. Gang erst bei niedrigem Tempo
+        startShift(eng.gear - 1, now, { ...mode, downMs: Math.min(mode.downMs, 200) }, false);
       }
     }
     target = gearRpm(eng.gear, vms);
-    if (pr.box) {
+    if (conv) {
       // Wandler offen: Motor dreht beim Anfahren bis zur Stall-Drehzahl hoch, Schlupf baut sich ab, je mehr die Räder aufholen
       if (eng.gear < mode.lockGear) {
         const wheel = target, stall = pr.idle + pedal * (STALL - pr.idle);
         target = Math.max(stall, wheel * (1 + 0.08 * pedal) + pedal * 120);
       }
-    } else if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
+    } else if (eng.gear === 1) { const slip = pr.idle + pedal * (pr.launch ? pr.launch - pr.idle : 2600); const k = Math.min(1, vms / (pr.launchV || 7)); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
     const s = eng.shift;
     if (s) {
