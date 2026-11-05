@@ -284,7 +284,8 @@ const ENGINES = {
   rs6: { name: "V10 Biturbo 5.0 TFSI (RS6-C6-Stil)", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [5.6, 6.3], fb: -0.55, loopDamp: 0.45, lp: 950, raw: 0.09, tau: 1.6, noise: 0.32, lope: 0.35, crackle: 1.5, intake: 0.5, cross: 0.35, stereo: true, turbo: 1,
     idle: 700, redline: 6800, limiter: 6900, inertia: 0.85,
-    ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.091, wheel: 0.35 },
+    // Original-Antrieb: ZF 6HP26A Tiptronic mit Wandler, Achsübersetzung 3,317 (Audi-Datenblatt), 255/40 R19
+    ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.317, wheel: 0.335, box: "zf6", vmax: 250 },
   v8flat: { name: "V8 Flatplane (Supersportwagen)", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [4.2, 4.6], fb: -0.45, loopDamp: 0.6, lp: 2200, raw: 0.2, tau: 1.0, noise: 0.45, lope: 0.2, crackle: 1.5, intake: 1.0, cross: 0.4, stereo: true,
     idle: 1000, redline: 8500, limiter: 8700, inertia: 0.6 },
@@ -347,7 +348,7 @@ function simStep(dt) {
     // Pedal = Wunschtempo (wie ein Fahrer, der das Pedal hält, bis das Tempo passt): bis zum Zieltempo zieht
     // der Antrieb mit bis zu pedal × Volllast, dann nur noch so viel, wie Fahrwiderstand + sanftes Einpendeln brauchen.
     // Vorher wuchs das Tempo bei konstantem Pedal minutenlang weiter (20 % Pedal → ~200 km/h).
-    const vt = pedal * 260 / 3.6;
+    const vt = pedal * ((eng.prof && eng.prof.vmax) || 260) / 3.6;
     const hold = 0.3036 * sim.v * sim.v + 180 + m * 0.6 * (vt - sim.v);
     F = Math.max(0, Math.min(pedal * Math.min(Fmax, P / Math.max(sim.v, 1)), hold));
   }
@@ -384,6 +385,16 @@ const SHIFT = {
   sport:   { up: [2800, -350], down: [1600, 3800], kick: 0.8,  upMs: 180, downMs: 450, kickDelay: 0.25, fart: 45, blip: 0.65, hold: 1.8, coastGap: 1100 },
   track:   { up: [3800, -80],  down: [2400, 4800], kick: 0.6,  upMs: 110, downMs: 350, kickDelay: 0.15, fart: 35, blip: 0.85, hold: 4.0, coastGap: 1400 },
 };
+/* Wandlerautomatik ZF 6HP26 (erste Generation, wie im RS6 C6): ZF nennt für diese Generation bis zu 800 ms
+   Schaltzeit, die Nachfolger (2007) ca. 200 ms. Daher hier je nach Modus 300–600 ms. Mehrfach-Rückschaltungen
+   gehen direkt in den Zielgang (Zielgang-Strategie). Kein Zündaussetzer, sondern weiche Momentenrücknahme.
+   Der Wandler rutscht beim Anfahren bis zur Stall-Drehzahl (Schätzwert 2600 1/min) und wird ab lockGear überbrückt. */
+const TIP = {
+  comfort: { upMs: 600, downMs: 700, kickDelay: 0.35, fart: 0, blip: 0.25, lockGear: 3, upCut: 0.65 },
+  sport:   { upMs: 420, downMs: 550, kickDelay: 0.25, fart: 0, blip: 0.45, lockGear: 2, upCut: 0.7 },
+  track:   { upMs: 320, downMs: 450, kickDelay: 0.2,  fart: 0, blip: 0.6,  lockGear: 2, upCut: 0.75 },
+};
+const STALL = 2600;
 const eng = { rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, wotT: 0, limiter: false, prof: null,
   shift: null, next: 0, jerkT: -1, wasCoast: 0 };
 const gb = () => ({ r: eng.prof.ratios || RATIOS, f: eng.prof.final || FINAL, w: eng.prof.wheel || WHEEL_R });
@@ -396,7 +407,7 @@ function startShift(to, now, mode, wot) {
   eng.gear = to; eng.lastShift = now;
 }
 function engineStep(dt, now) {
-  const pr = eng.prof, mode = SHIFT[shiftSel.value];
+  const pr = eng.prof, mode = pr.box ? { ...SHIFT[shiftSel.value], ...TIP[shiftSel.value] } : SHIFT[shiftSel.value];
   const kwMax = +tqMaxEl.value;
   const vms = car.speed / 3.6, pedal = Math.min(1, Math.max(0, car.pedal));
   // Last aus der Akku-Leistung (der Commander liefert 0x132, aber nicht die Drehmoment-Frames 0x108/0x186)
@@ -410,7 +421,8 @@ function engineStep(dt, now) {
   } else {
     // Vollgas (über der Kickdown-Schwelle): in jedem Modus bis kurz vor die Rotlinie ausdrehen
     const wot = pedal > mode.kick;
-    const upAt = wot ? pr.redline - 150 : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
+    // Volllast: so früh auslösen, dass die Drehzahl während der Momentenphase nicht in den Begrenzer läuft
+    const upAt = wot ? pr.redline - 150 - (pr.box ? 250 : 0) : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
     const up = wot ? upAt : mode.up[0] + (upAt - mode.up[0]) * Math.pow(pedal, 1.3);
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     // Gas weg: Gang erst halten (Motorbremse, Schubknallen), dann gemächlich Gang für Gang hoch
@@ -443,14 +455,20 @@ function engineStep(dt, now) {
         startShift(eng.gear + 1, now, mode, wot);
       } else if (kickTo < eng.gear) {
         // gleiche Welle (beide gerade oder beide ungerade) und mehr als ein Gang: erst eins runter, dann weiter
-        if (eng.gear - kickTo > 1 && (eng.gear - kickTo) % 2 === 0) { eng.next = kickTo; startShift(eng.gear - 1, now, mode, wot); }
+        if (!pr.box && eng.gear - kickTo > 1 && (eng.gear - kickTo) % 2 === 0) { eng.next = kickTo; startShift(eng.gear - 1, now, mode, wot); }
         else startShift(kickTo, now, mode, wot);
       } else if (canShift && reacted && lower < up - 600 && cur < down) {
         startShift(eng.gear - 1, now, mode, wot);
       }
     }
     target = gearRpm(eng.gear, vms);
-    if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
+    if (pr.box) {
+      // Wandler offen: Motor dreht beim Anfahren bis zur Stall-Drehzahl hoch, Schlupf baut sich ab, je mehr die Räder aufholen
+      if (eng.gear < mode.lockGear) {
+        const wheel = target, stall = pr.idle + pedal * (STALL - pr.idle);
+        target = Math.max(stall, wheel * (1 + 0.08 * pedal) + pedal * 120);
+      }
+    } else if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
     const s = eng.shift;
     if (s) {
@@ -460,7 +478,7 @@ function engineStep(dt, now) {
         const e = ease((x - 0.25) / 0.75);
         target = s.rpm0 + (target - s.rpm0) * e;
         if (s.fart && x >= 0.25 && now - s.t0 < s.dur * 0.25 + s.fart) eng.cutUntil = now + 16;
-        shiftLoad = x >= 0.25 ? 0.6 : 1;           // Zündung kurz zurückgenommen
+        shiftLoad = x >= 0.25 ? (mode.upCut || 0.6) : 1;   // Zündung kurz zurückgenommen
       } else {
         // Zwischengas: Drehzahl läuft in ~70 % der Zeit auf den kleineren Gang hoch, dann schließt die Kupplung
         const e = ease(x / 0.7);
