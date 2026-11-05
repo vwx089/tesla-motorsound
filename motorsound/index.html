@@ -370,28 +370,42 @@ function simStep(dt) {
 
 /* ===================== Virtuelles Getriebe und Motorzustand ===================== */
 const RATIOS = [3.6, 2.3, 1.7, 1.32, 1.06, 0.87, 0.72], FINAL = 3.2, WHEEL_R = 0.34;
+/* Doppelkupplungsgetriebe (Vorbild VW DSG / Audi S tronic). Werte aus öffentlich zugänglichen Angaben, gerundet:
+   - Hochschalten: nächster Gang ist vorgewählt, Kupplungen überschneiden sich (Momentenphase), danach fällt die
+     Drehzahl weich auf den neuen Gang (Trägheitsphase). Gesamt ca. 0,1–0,3 s, keine Zugkraftunterbrechung.
+     Unter Last wird dabei die Zündung kurz zurückgenommen; bei Vollgas im Sport hört man das als "Blubb" (30–60 ms).
+   - Runterschalten: Zwischengas, Drehzahl läuft auf den kleineren Gang hoch, dann schließt die Kupplung. Ca. 0,35–0,6 s.
+   - Kickdown: ca. 0,15–0,35 s Pedalerkennung. Zielgang auf der anderen Welle (ungerade/gerade) geht direkt,
+     auf derselben Welle nur über einen Zwischengang (7→6→5).
+   upMs/downMs = Dauer des Schaltvorgangs, kickDelay = s Pedalerkennung, fart = Zündaussetzer beim Vollgas-Hochschalten,
+   blip = Stärke des Zwischengases, hold = s Gang halten nach Gaswegnehmen, coastGap = ms zwischen Hochschaltungen im Schub */
 const SHIFT = {
-  // hold = Sekunden, die der Gang nach dem Gaswegnehmen gehalten wird (Schub), coastGap = ms zwischen Hochschaltungen im Schub
-  // kickDelay = s Reaktionszeit beim Kickdown, downGap = ms zwischen zwei Rückschaltungen,
-  // downRev = U/min pro Sekunde, mit denen die Drehzahl beim Runterschalten hochläuft (Kupplungen greifen weich)
-  comfort: { up: [2100, 4200], down: [1200, 2600], kick: 0.92, cutMs: 140, hold: 0.6, coastGap: 900,  kickDelay: 0.6,  downGap: 900, downRev: 4000 },
-  sport:   { up: [2800, -350], down: [1600, 3800], kick: 0.8, cutMs: 90, hold: 1.8, coastGap: 1100, kickDelay: 0.4,  downGap: 650, downRev: 6000 },
-  track:   { up: [3800, -80],  down: [2400, 4800], kick: 0.6, cutMs: 60, hold: 4.0, coastGap: 1400, kickDelay: 0.25, downGap: 450, downRev: 8000 },
+  comfort: { up: [2100, 4200], down: [1200, 2600], kick: 0.92, upMs: 300, downMs: 600, kickDelay: 0.35, fart: 0,  blip: 0.4, hold: 0.6, coastGap: 900 },
+  sport:   { up: [2800, -350], down: [1600, 3800], kick: 0.8,  upMs: 180, downMs: 450, kickDelay: 0.25, fart: 45, blip: 0.65, hold: 1.8, coastGap: 1100 },
+  track:   { up: [3800, -80],  down: [2400, 4800], kick: 0.6,  upMs: 110, downMs: 350, kickDelay: 0.15, fart: 35, blip: 0.85, hold: 4.0, coastGap: 1400 },
 };
-const eng = { rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, limiter: false, prof: null };
+const eng = { rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, wotT: 0, limiter: false, prof: null,
+  shift: null, next: 0, jerkT: -1, wasCoast: 0 };
 const gb = () => ({ r: eng.prof.ratios || RATIOS, f: eng.prof.final || FINAL, w: eng.prof.wheel || WHEEL_R });
 function gearRpm(g, vms) { const G = gb(); return vms / (2 * Math.PI * G.w) * 60 * G.r[g - 1] * G.f; }
+const ease = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+function startShift(to, now, mode, wot) {
+  const up = to > eng.gear;
+  eng.shift = { from: eng.gear, to, t0: now, dur: up ? mode.upMs : mode.downMs, up, rpm0: eng.rpm,
+    fart: up && wot && mode.fart ? mode.fart : 0 };
+  eng.gear = to; eng.lastShift = now;
+}
 function engineStep(dt, now) {
   const pr = eng.prof, mode = SHIFT[shiftSel.value];
   const kwMax = +tqMaxEl.value;
   const vms = car.speed / 3.6, pedal = Math.min(1, Math.max(0, car.pedal));
   // Last aus der Akku-Leistung (der Commander liefert 0x132, aber nicht die Drehmoment-Frames 0x108/0x186)
   const tqN = Math.max(-1, Math.min(1, car.powerKw / kwMax));
-  let target;
+  let target, shiftLoad = null;
   const driving = car.gear === "D" || car.gear === "R";
   if (!driving || vms < 0.3 && pedal < 0.02) {
     // Stand bzw. P/N: Leerlauf, im Stand freies Hochdrehen mit dem Gaspedal
-    eng.gear = 1;
+    eng.gear = 1; eng.shift = null; eng.next = 0;
     target = pr.idle + (!driving ? pedal * (pr.redline - pr.idle) : 0);
   } else {
     // Vollgas (über der Kickdown-Schwelle): in jedem Modus bis kurz vor die Rotlinie ausdrehen
@@ -401,33 +415,76 @@ function engineStep(dt, now) {
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     // Gas weg: Gang erst halten (Motorbremse, Schubknallen), dann gemächlich Gang für Gang hoch
     eng.coastT = pedal < 0.05 ? eng.coastT + dt : 0;
-    eng.wotT = wot ? (eng.wotT || 0) + dt : 0;
+    eng.wotT = wot ? eng.wotT + dt : 0;
+    // Pedalerkennung: nach einem kräftigen Tritt aufs Pedal dauert es kickDelay, bis das Getriebe runterschaltet
+    eng.pSlow = (eng.pSlow || 0) + (pedal - (eng.pSlow || 0)) * Math.min(1, dt / 0.4);
+    const tipping = pedal - eng.pSlow > 0.12;
+    if (tipping && !eng.tipping) eng.pTip = now;
+    eng.tipping = tipping;
+    const reacted = now - (eng.pTip || -1e9) > mode.kickDelay * 1000;
+    // Lastwechsel: wer aus dem Schub wieder Gas gibt, bekommt einen kleinen Ruck im Antriebsstrang
+    if (pedal >= 0.05 && eng.wasCoast > 0.3) eng.jerkT = now;
+    eng.wasCoast = eng.coastT;
     const coasting = eng.coastT > 0;
-    const canShift = now - eng.lastShift > (coasting ? mode.coastGap : 450);
+    const nG = gb().r.length;
     const cur = gearRpm(eng.gear, vms);
-    const upBlocked = coasting && eng.coastT < mode.hold && cur < pr.redline - 150;
-    // Zurückschalten nur, wenn der kleinere Gang nicht sofort wieder hochschalten müsste (sonst Pendeln)
-    const lower = eng.gear > 1 ? gearRpm(eng.gear - 1, vms) : Infinity;
-    if (canShift && !upBlocked && cur > up && eng.gear < gb().r.length) { eng.gear++; eng.lastShift = now; eng.cutUntil = now + mode.cutMs; }
-    else if (now - eng.lastShift > mode.downGap && lower < up - 600 && (cur < down || (wot && eng.wotT > mode.kickDelay && lower < pr.redline - 900))) { eng.gear--; eng.lastShift = now; eng.blip = now + 160; eng.downUntil = now + mode.downGap; }
+    if (eng.shift && now - eng.shift.t0 >= eng.shift.dur) eng.shift = null;
+    if (!eng.shift) {
+      const canShift = now - eng.lastShift > (coasting ? mode.coastGap : 120);
+      const upBlocked = coasting && eng.coastT < mode.hold && cur < pr.redline - 150;
+      // Kickdown: kleinster Gang, der noch unter der Rotlinie bleibt
+      let kickTo = eng.gear;
+      if (wot && reacted) while (kickTo > 1 && gearRpm(kickTo - 1, vms) < pr.redline - 900 && gearRpm(kickTo - 1, vms) < up - 600) kickTo--;
+      const lower = eng.gear > 1 ? gearRpm(eng.gear - 1, vms) : Infinity;
+      if (eng.next && eng.next < eng.gear) {
+        // zweiter Teil eines Kickdowns über einen Zwischengang
+        startShift(eng.next, now, mode, wot); eng.next = 0;
+      } else if (canShift && !upBlocked && cur > up && eng.gear < nG) {
+        startShift(eng.gear + 1, now, mode, wot);
+      } else if (kickTo < eng.gear) {
+        // gleiche Welle (beide gerade oder beide ungerade) und mehr als ein Gang: erst eins runter, dann weiter
+        if (eng.gear - kickTo > 1 && (eng.gear - kickTo) % 2 === 0) { eng.next = kickTo; startShift(eng.gear - 1, now, mode, wot); }
+        else startShift(kickTo, now, mode, wot);
+      } else if (canShift && reacted && lower < up - 600 && cur < down) {
+        startShift(eng.gear - 1, now, mode, wot);
+      }
+    }
     target = gearRpm(eng.gear, vms);
     if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
+    const s = eng.shift;
+    if (s) {
+      const x = (now - s.t0) / s.dur;
+      if (s.up) {
+        // Momentenphase (erstes Viertel): Drehzahl bleibt, dann Trägheitsphase: weich auf den neuen Gang
+        const e = ease((x - 0.25) / 0.75);
+        target = s.rpm0 + (target - s.rpm0) * e;
+        if (s.fart && x >= 0.25 && now - s.t0 < s.dur * 0.25 + s.fart) eng.cutUntil = now + 16;
+        shiftLoad = x >= 0.25 ? 0.6 : 1;           // Zündung kurz zurückgenommen
+      } else {
+        // Zwischengas: Drehzahl läuft in ~70 % der Zeit auf den kleineren Gang hoch, dann schließt die Kupplung
+        const e = ease(x / 0.7);
+        target = s.rpm0 + (target - s.rpm0) * e;
+        if (x < 0.7) shiftLoad = -mode.blip;        // negativ = Mindestlast fürs Gasstoß-Geräusch
+      }
+    }
   }
-  // Drehzahlträgheit: hoch schneller als runter, im Stand stärker gedämpft
+  // Drehzahlträgheit: hoch schneller als runter, im Stand stärker gedämpft. Während eines Schaltvorgangs
+  // gibt die Schaltkurve die Drehzahl vor.
   const freeRev = !driving || vms < 0.3;
-  let upRate = (freeRev ? 9000 : 20000) / pr.inertia;
-  if (!freeRev && now < (eng.downUntil || 0)) upRate = Math.min(upRate, mode.downRev);
-  const dnRate = (freeRev ? 4500 : 14000) / pr.inertia;
+  const upRate = (freeRev ? 9000 : 20000) / pr.inertia, dnRate = (freeRev ? 4500 : 14000) / pr.inertia;
   const d = target - eng.rpm;
-  eng.rpm += Math.max(-dnRate * dt, Math.min(upRate * dt, d));
+  if (eng.shift) eng.rpm = target;
+  else eng.rpm += Math.max(-dnRate * dt, Math.min(upRate * dt, d));
+  // Lastwechselruck: kurz gedämpftes Schwingen des Antriebsstrangs (~3 Hz)
+  if (eng.jerkT >= 0) { const t = (now - eng.jerkT) / 1000; if (t < 0.8) eng.rpm += 90 * Math.sin(2 * Math.PI * 3 * t) * Math.exp(-t / 0.22); else eng.jerkT = -1; }
   // Begrenzer
   if (eng.rpm >= pr.limiter) eng.limiter = true; else if (eng.rpm < pr.limiter - 250) eng.limiter = false;
   if (eng.limiter && pedal > 0.1) eng.rpm = pr.limiter - 120 * Math.random();
   // Last: Pedal ist das unmittelbare Signal, Drehmoment bestätigt es
   let load = pedal > 0.02 ? Math.min(1, pedal * 0.75 + Math.max(0, tqN) * 0.45) : 0;
   if (freeRev && pedal > 0.02) load = Math.min(1, pedal * 0.9 + (d > 300 ? 0.3 : 0));
-  if (eng.blip && now < eng.blip) load = Math.max(load, 0.55);
+  if (shiftLoad !== null) load = shiftLoad < 0 ? Math.max(load, -shiftLoad) : load * shiftLoad;
   eng.load = load;
   // Schubbetrieb: nach dem Gaswegnehmen bei hoher Drehzahl knallt und knistert es
   if (pedal < 0.04 && eng.rpm > 2300) { eng.liftT += dt; } else eng.liftT = 0;
