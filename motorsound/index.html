@@ -372,9 +372,11 @@ function simStep(dt) {
 const RATIOS = [3.6, 2.3, 1.7, 1.32, 1.06, 0.87, 0.72], FINAL = 3.2, WHEEL_R = 0.34;
 const SHIFT = {
   // hold = Sekunden, die der Gang nach dem Gaswegnehmen gehalten wird (Schub), coastGap = ms zwischen Hochschaltungen im Schub
-  comfort: { up: [2100, 4200], down: [1200, 2600], kick: 0.92, cutMs: 140, hold: 0.6, coastGap: 900 },
-  sport:   { up: [2800, -350], down: [1600, 3800], kick: 0.8, cutMs: 90, hold: 1.8, coastGap: 1100 },
-  track:   { up: [3800, -80],  down: [2400, 4800], kick: 0.6, cutMs: 60, hold: 4.0, coastGap: 1400 },
+  // kickDelay = s Reaktionszeit beim Kickdown, downGap = ms zwischen zwei Rückschaltungen,
+  // downRev = U/min pro Sekunde, mit denen die Drehzahl beim Runterschalten hochläuft (Kupplungen greifen weich)
+  comfort: { up: [2100, 4200], down: [1200, 2600], kick: 0.92, cutMs: 140, hold: 0.6, coastGap: 900,  kickDelay: 0.6,  downGap: 900, downRev: 4000 },
+  sport:   { up: [2800, -350], down: [1600, 3800], kick: 0.8, cutMs: 90, hold: 1.8, coastGap: 1100, kickDelay: 0.4,  downGap: 650, downRev: 6000 },
+  track:   { up: [3800, -80],  down: [2400, 4800], kick: 0.6, cutMs: 60, hold: 4.0, coastGap: 1400, kickDelay: 0.25, downGap: 450, downRev: 8000 },
 };
 const eng = { rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, limiter: false, prof: null };
 const gb = () => ({ r: eng.prof.ratios || RATIOS, f: eng.prof.final || FINAL, w: eng.prof.wheel || WHEEL_R });
@@ -399,6 +401,7 @@ function engineStep(dt, now) {
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     // Gas weg: Gang erst halten (Motorbremse, Schubknallen), dann gemächlich Gang für Gang hoch
     eng.coastT = pedal < 0.05 ? eng.coastT + dt : 0;
+    eng.wotT = wot ? (eng.wotT || 0) + dt : 0;
     const coasting = eng.coastT > 0;
     const canShift = now - eng.lastShift > (coasting ? mode.coastGap : 450);
     const cur = gearRpm(eng.gear, vms);
@@ -406,14 +409,16 @@ function engineStep(dt, now) {
     // Zurückschalten nur, wenn der kleinere Gang nicht sofort wieder hochschalten müsste (sonst Pendeln)
     const lower = eng.gear > 1 ? gearRpm(eng.gear - 1, vms) : Infinity;
     if (canShift && !upBlocked && cur > up && eng.gear < gb().r.length) { eng.gear++; eng.lastShift = now; eng.cutUntil = now + mode.cutMs; }
-    else if (canShift && lower < up - 600 && (cur < down || (wot && lower < pr.redline - 900))) { eng.gear--; eng.lastShift = now; eng.blip = now + 160; }
+    else if (now - eng.lastShift > mode.downGap && lower < up - 600 && (cur < down || (wot && eng.wotT > mode.kickDelay && lower < pr.redline - 900))) { eng.gear--; eng.lastShift = now; eng.blip = now + 160; eng.downUntil = now + mode.downGap; }
     target = gearRpm(eng.gear, vms);
     if (eng.gear === 1) { const slip = pr.idle + pedal * 2600; const k = Math.min(1, vms / 7); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
   }
   // Drehzahlträgheit: hoch schneller als runter, im Stand stärker gedämpft
   const freeRev = !driving || vms < 0.3;
-  const upRate = (freeRev ? 9000 : 20000) / pr.inertia, dnRate = (freeRev ? 4500 : 14000) / pr.inertia;
+  let upRate = (freeRev ? 9000 : 20000) / pr.inertia;
+  if (!freeRev && now < (eng.downUntil || 0)) upRate = Math.min(upRate, mode.downRev);
+  const dnRate = (freeRev ? 4500 : 14000) / pr.inertia;
   const d = target - eng.rpm;
   eng.rpm += Math.max(-dnRate * dt, Math.min(upRate * dt, d));
   // Begrenzer
