@@ -343,7 +343,14 @@ function simStep(dt) {
   const pedal = Math.max(sim.gas, sim.slider);
   const m = 2000, P = 340000, Fmax = 11000;
   let F = 0;
-  if (sim.gear === "D") F = pedal * Math.min(Fmax, P / Math.max(sim.v, 1));
+  if (sim.gear === "D") {
+    // Pedal = Wunschtempo (wie ein Fahrer, der das Pedal hält, bis das Tempo passt): bis zum Zieltempo zieht
+    // der Antrieb mit bis zu pedal × Volllast, dann nur noch so viel, wie Fahrwiderstand + sanftes Einpendeln brauchen.
+    // Vorher wuchs das Tempo bei konstantem Pedal minutenlang weiter (20 % Pedal → ~200 km/h).
+    const vt = pedal * 260 / 3.6;
+    const hold = 0.3036 * sim.v * sim.v + 180 + m * 0.6 * (vt - sim.v);
+    F = Math.max(0, Math.min(pedal * Math.min(Fmax, P / Math.max(sim.v, 1)), hold));
+  }
   // Rekuperation (leistungsbegrenzt) plus Motorbremse des virtuellen Verbrenners: kleiner Gang und hohe Drehzahl bremsen stärker
   let regen = 0;
   if (sim.gear === "D" && pedal < 0.05 && sim.v > 0.5) {
