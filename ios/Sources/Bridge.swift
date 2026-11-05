@@ -27,6 +27,10 @@ final class Bridge: ObservableObject {
     private var sourceTimers: [DispatchSourceTimer] = []
     private var started = false
     private var useDemo = false
+    private var browser: NWBrowser?
+    /// "?" unbekannt, "ja" erlaubt, "NEIN" abgelehnt (Einstellungen > Motorsound > Lokales Netzwerk)
+    private var lanPermission = "?"
+    static let bonjourType = "_motorsound._tcp"
 
     // MARK: Start
 
@@ -35,6 +39,7 @@ final class Bridge: ObservableObject {
             guard !self.started else { return }
             self.started = true
             self.startHTTP()
+            self.startPermissionProbe()
             self.timers.append(self.timer(every: 0.02) { self.flush() })
             self.timers.append(self.timer(every: 15) { self.broadcast(": ping\n\n") })
             self.timers.append(self.timer(every: 1) { self.tick() })
@@ -58,13 +63,34 @@ final class Bridge: ObservableObject {
         if useDemo { setStatus("Demo: \(n) Frames/s"); return }
         if Date().timeIntervalSince(lastRx) > 5 {
             // Diagnose für die Fehlersuche im Auto
-            var msg = "Keine Daten · ehllo \(helloSent)× gesendet"
+            var msg = "Keine Daten · Lokales Netzwerk: \(lanPermission)"
+            if lanPermission == "NEIN" { msg += " → Einstellungen > Motorsound > Lokales Netzwerk einschalten" }
+            msg += " · ehllo \(helloSent)× gesendet"
             if !helloErr.isEmpty { msg += " · Fehler: \(helloErr)" + (helloErr.contains("route") || helloErr.contains("permitted") ? " (Lokales Netzwerk erlaubt? WLAN S3XY_OBD?)" : "") }
             if rxPackets > 0 { msg += " · zuletzt von \(rxFrom)" }
             setStatus(msg)
         } else {
             setStatus("Commander \(rxFrom): \(n) Frames/s")
         }
+    }
+
+    // MARK: Berechtigung "Lokales Netzwerk"
+    // iOS zeigt den Dialog erst, wenn die App wirklich ins lokale Netz funkt. Ein Unicast an 192.168.4.1
+    // zählt nur, wenn das iPhone gerade im WLAN S3XY_OBD ist. Bonjour-Suche löst den Dialog in jedem WLAN aus
+    // und verrät außerdem, ob die Erlaubnis erteilt (eigener Dienst gefunden) oder abgelehnt wurde.
+    private func startPermissionProbe() {
+        let b = NWBrowser(for: .bonjour(type: Self.bonjourType, domain: nil), using: .tcp)
+        b.stateUpdateHandler = { [weak self] st in
+            guard let self else { return }
+            if case .waiting(let e) = st, case .dns(let code) = e, code == -65570 /* PolicyDenied */ {
+                self.lanPermission = "NEIN"
+            }
+        }
+        b.browseResultsChangedHandler = { [weak self] results, _ in
+            if !results.isEmpty { self?.lanPermission = "ja" }
+        }
+        b.start(queue: q)
+        browser = b
     }
 
     // MARK: Datenquelle
@@ -219,6 +245,7 @@ final class Bridge: ObservableObject {
     private func startHTTP() {
         do {
             let l = try NWListener(using: .tcp, on: .init(rawValue: Self.httpPort)!)
+            l.service = NWListener.Service(name: "Motorsound-\(UUID().uuidString.prefix(6))", type: Self.bonjourType)
             l.newConnectionHandler = { [weak self] c in self?.accept(c) }
             l.stateUpdateHandler = { [weak self] st in
                 if case .failed(let e) = st { self?.setStatus("Server-Fehler: \(e.localizedDescription)") }
