@@ -51,7 +51,7 @@ Keine Samples, alles wird in Echtzeit im AudioWorklet erzeugt:
 3. Ein lastabhängiger Tiefpass als Schalldämpfer, Ansaugrauschen bei offener Drossel, leichte Sättigung.
 4. Schubbetrieb nach Gaswegnehmen (stärker bei Rekuperation) erzeugt Knallen und Knistern, Hochschalten kurze Zündunterbrechung, Begrenzer an der Abregeldrehzahl.
 
-Motoren: V8 Crossplane, V10 Biturbo (RS6 C6), Boxer-Sechszylinder 4.0 Sauger mit 7-Gang-PDK (911 GT3 RS 992), V8 Flatplane, Reihensechser, Boxer-Vierzylinder, V10. Getriebe: 7 Gänge, Schaltpunkte abhängig von Pedalstellung und Modus (Komfort, Sport, Rennstrecke), Kickdown, Wandlerschlupf beim Anfahren.
+Motoren: V8 Crossplane, V10 Biturbo (RS6 C6), Boxer-Sechszylinder 4.0 Sauger mit 7-Gang-PDK (911 GT3 RS 992), VR6 3.2 mit 6-Gang-Handschaltung (Golf R32), V8 Flatplane, Reihensechser, Boxer-Vierzylinder, V10. Getriebe: 7 Gänge, Schaltpunkte abhängig von Pedalstellung und Modus (Komfort, Sport, Rennstrecke), Kickdown, Wandlerschlupf beim Anfahren.
 
 ## Ausprobieren
 
