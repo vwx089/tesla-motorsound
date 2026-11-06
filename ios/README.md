@@ -26,6 +26,7 @@ Hinweis: Mit kostenlosem Apple-Account zählen SideStore selbst und jede install
 
 1. iPhone ins WLAN `S3XY_OBD` (Passwort 12345678). Die Meldung „Kein Internet“ ignorieren; Mobilfunk läuft weiter.
 2. App öffnen, oben „Live“ (oder „Demo“ ohne Auto), beim ersten Start „Lokales Netzwerk“ erlauben.
-3. In der Web-App „Motor starten“ und Datenquelle „Live (Bridge)“.
+3. In der Web-App „Motor starten“. Sobald der Commander Daten liefert, wechselt die App von selbst auf „Live (Bridge)“.
+   Wer von Hand „Simulation“ wählt, bleibt dort, bis der Commander einmal weg war und wiederkommt.
 
 Die Statuszeile oben zeigt im Live-Modus, wie oft „ehllo“ gesendet wurde, Sendefehler und den Absender der Daten.

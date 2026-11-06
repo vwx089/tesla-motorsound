@@ -15,6 +15,7 @@ struct MotorsoundApp: App {
 
 struct ContentView: View {
     @StateObject private var bridge = Bridge()
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,7 @@ struct ContentView: View {
         }
         .background(Color.black)
         .preferredColorScheme(.dark)
+        .onChange(of: phase) { _, p in if p == .active { bridge.wake() } }
         .onAppear {
             bridge.start()
             UIApplication.shared.isIdleTimerDisabled = true   // Display bleibt an, solange die App vorne ist

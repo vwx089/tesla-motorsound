@@ -28,6 +28,8 @@ final class Bridge: ObservableObject {
     private var started = false
     private var useDemo = false
     private var browser: NWBrowser?
+    private var wifi: NWPathMonitor?
+    private var wifiUp = false
     /// "?" unbekannt, "ja" erlaubt, "NEIN" abgelehnt (Einstellungen > Motorsound > Lokales Netzwerk)
     private var lanPermission = "?"
     static let bonjourType = "_motorsound._tcp"
@@ -40,6 +42,7 @@ final class Bridge: ObservableObject {
             self.started = true
             self.startHTTP()
             self.startPermissionProbe()
+            self.startWifiMonitor()
             self.timers.append(self.timer(every: 0.02) { self.flush() })
             self.timers.append(self.timer(every: 15) { self.broadcast(": ping\n\n") })
             self.timers.append(self.timer(every: 1) { self.tick() })
@@ -91,6 +94,28 @@ final class Bridge: ObservableObject {
         }
         b.start(queue: q)
         browser = b
+    }
+
+    // MARK: Commander automatisch finden
+    // Sobald das WLAN (wieder) da ist, frisch verbinden. Der Socket vom vorherigen Netz taugt oft nicht mehr.
+    private func startWifiMonitor() {
+        let m = NWPathMonitor(requiredInterfaceType: .wifi)
+        m.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            let up = path.status == .satisfied
+            if up && !self.wifiUp && self.started && !self.useDemo { self.restartSource(demo: false) }
+            self.wifiUp = up
+        }
+        m.start(queue: q)
+        wifi = m
+    }
+
+    /// App kommt zurück in den Vordergrund: iOS hat den Socket evtl. stillgelegt
+    func wake() {
+        q.async {
+            guard self.started, !self.useDemo, Date().timeIntervalSince(self.lastRx) > 2 else { return }
+            self.restartSource(demo: false)
+        }
     }
 
     // MARK: Datenquelle
@@ -203,7 +228,13 @@ final class Bridge: ObservableObject {
             if self.sendRaw(Self.hello) { self.helloSent += 1 }
         }
         hello()
-        sourceTimers.append(timer(every: 3.5, hello))
+        // Ohne Daten jede Sekunde anklopfen, damit der Commander schnell gefunden wird. Verbunden reicht das Lebenszeichen alle 3,5 s.
+        var lastHello = Date()
+        sourceTimers.append(timer(every: 1) { [weak self] in
+            guard let self else { return }
+            let waiting = Date().timeIntervalSince(self.lastRx) > 3
+            if waiting || Date().timeIntervalSince(lastHello) >= 3.5 { hello(); lastHello = Date() }
+        })
         setStatus("Sende \"\(Self.hello)\" an \(Self.host):\(Self.udpPort) …")
     }
 
