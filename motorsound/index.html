@@ -175,6 +175,7 @@ class EngineProc extends AudioWorkletProcessor {
     if (pr.cylTrim) this.cylGain = pr.cylTrim.slice();   // gemessene Unterschiede zwischen den Zylindern statt Zufall
     const svf = ([f, q, gain, on]) => ({ g: Math.tan(Math.PI * Math.min(f, this.sr * 0.45) / this.sr), k: 1 / q, gain, on: on || 0, s1: 0, s2: 0 });
     this.body = pr.body ? pr.body.map(svf) : null;   // Karosserie-Resonanzen
+    this.clack = pr.clack ? pr.clack.map(svf) : null; this.clk = 0;   // Mechanik pro Arbeitstakt (Einspritzung, Ventiltrieb)
     this.ou = [0, 0, 0, 0, 0]; this.ou2 = [0, 0, 0, 0, 0]; this.ou3 = [0, 0, 0, 0, 0];
     // Einzeldrossel-Ansaugung: feste Resonanzen, durch die die Motorordnungen beim Hochdrehen hindurchlaufen
     this.form = pr.itb ? pr.itb.formants.map(([f, q, gain, high]) => ({ g: Math.tan(Math.PI * Math.min(f, this.sr * 0.45) / this.sr), k: 1 / q, gain, high, s1: 0, s2: 0 })) : null;
@@ -228,6 +229,7 @@ class EngineProc extends AudioWorkletProcessor {
         a *= 1 - 0.3 * this.fc;
         if (pr.bankGain) a *= pr.bankGain[banks[c]];       // Bänke klingen verschieden: erzeugt die halbe Zündfrequenz
         this.spawn(a, banks[c], 0);
+        if (this.clack) this.clk = cg;
         if (p.overrun > 0 && this.rnd() < 0.05 * p.overrun * pr.crackle * (1 - 0.5 * this.fc)) this.spawn(0.6 + 1.4 * this.rnd(), banks[c], 1);
       }
       const tau = pr.tau / 1000 * (0.55 + 0.45 * Math.min(1, 1200 / rpm));
@@ -322,6 +324,15 @@ class EngineProc extends AudioWorkletProcessor {
         }
         body *= mB; ys[0] *= mE; ys[1] *= mE;
       }
+      // Mechanisches Klackern: Impuls statt Rauschen, bleibt daher ein klarer, drehzahlfester Ton und kein Säuseln
+      if (this.clack) {
+        const x = this.clk; this.clk = 0;
+        for (const f of this.clack) {
+          const h = (x - (f.k + f.g) * f.s1 - f.s2) / (1 + f.g * (f.g + f.k));
+          const b = f.g * h + f.s1; f.s1 = f.g * h + b; f.s2 += 2 * f.g * b;
+          body += b * f.gain;
+        }
+      }
       let l = ys[0] + ys[1] * pr.cross + intake + mech + turbo + itb + body, r = ys[1] + ys[0] * pr.cross + intake + mech + turbo + itb + body;
       if (!pr.stereo) { const m = (ys[0] + ys[1]) * 0.75; l = m + intake + mech + turbo; r = l; }
       const drive = 1.2 + (pr.driveLoad === undefined ? 2.5 : pr.driveLoad) * load;
@@ -347,13 +358,15 @@ const ENGINES = {
     plenum: 1.2, idle: 750, redline: 6500, limiter: 6700, inertia: 1.0 },
   // Klang abgeglichen mit einer Beschleunigungsaufnahme eines RS6 C6 (laut Video 650 PS statt Serie 580, Aufnahme teils übersteuert):
   // viele gleich starke halbe Ordnungen statt einer klaren Zündfrequenz, darüber kaum Rauschen (über 4 kHz etwa −44 dB).
+  // Eine zweite Onboard-Aufnahme (MTM-getunt, dreht bis etwa 7100) bestätigt das Spektrum und liefert den Leerlauf: etwa 980 1/min, Vielfache von 2,5. Ordnung.
   rs6: { name: "Audi RS6 V10 Biturbo", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [5.6, 6.3], fb: -0.25, loopDamp: 0.45, lp: 950, raw: 0.02, tau: 1.6, noise: 0.1, lope: 0.35, crackle: 1.5, intake: 0.15, cross: 0.35, stereo: true, turbo: 1, whistle: 0.05,
     level: 1.5, bankGain: [1, 0.9], trimLoad: true, cylTrim: [1.5, 0.6, 1.2, 0.5, 0.9, 1.5, 0.6, 1.3, 0.5, 1.2],
-    body: [[100, 3, 0.12], [137, 5, 0.1], [200, 4, 0.06], [290, 4, 0.12], [400, 3, 0.14], [550, 3, 0.14], [1250, 4, 0.1]],
+    body: [[100, 3, 0.12], [137, 5, 0.1], [165, 5, 0.09], [200, 4, 0.06], [290, 4, 0.12], [390, 4, 0.24], [550, 3, 0.14], [1250, 4, 0.1]],
     live: { fastTau: 0.012, slowTau: 0.09, exh: [0.03, 0.05], body: [0.22, 0.2], itb: [0, 0], rpm: 0.0015 },
+    clack: [[170, 4, 0.08], [330, 5, 0.08], [800, 5, 0.1], [1500, 6, 0.05], [2700, 7, 0.012]],
     upEarly: 50,
-    plenum: 1.3, idle: 700, redline: 6800, limiter: 6900, inertia: 0.85,
+    plenum: 1.3, idle: 980, redline: 6800, limiter: 6900, inertia: 0.85,
     // Original-Antrieb: ZF 6HP26A Tiptronic mit Wandler, Achsübersetzung 3,317 (Audi-Datenblatt), 255/40 R19
     ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.317, wheel: 0.335, box: "zf6", vmax: 250,
     // Nur Testmodus: 580 PS bei 6250–6700, 650 Nm bei 1500–6250, Allrad. Wirkungsgrad und Haftung auf 0–100 und 0–200 abgestimmt.
