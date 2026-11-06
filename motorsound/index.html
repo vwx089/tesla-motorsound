@@ -175,7 +175,7 @@ class EngineProc extends AudioWorkletProcessor {
     if (pr.cylTrim) this.cylGain = pr.cylTrim.slice();   // gemessene Unterschiede zwischen den Zylindern statt Zufall
     const svf = ([f, q, gain, on]) => ({ g: Math.tan(Math.PI * Math.min(f, this.sr * 0.45) / this.sr), k: 1 / q, gain, on: on || 0, s1: 0, s2: 0 });
     this.body = pr.body ? pr.body.map(svf) : null;   // Karosserie-Resonanzen
-    this.ou = [0, 0, 0, 0, 0];
+    this.ou = [0, 0, 0, 0, 0]; this.ou2 = [0, 0, 0, 0, 0]; this.ou3 = [0, 0, 0, 0, 0];
     // Einzeldrossel-Ansaugung: feste Resonanzen, durch die die Motorordnungen beim Hochdrehen hindurchlaufen
     this.form = pr.itb ? pr.itb.formants.map(([f, q, gain, high]) => ({ g: Math.tan(Math.PI * Math.min(f, this.sr * 0.45) / this.sr), k: 1 / q, gain, high, s1: 0, s2: 0 })) : null;
   }
@@ -204,10 +204,14 @@ class EngineProc extends AudioWorkletProcessor {
         const lv = pr.live, ou = this.ou, df = 1 / (lv.fastTau * sr), ds = 1 / (lv.slowTau * sr), nf = Math.sqrt(6 * df), ns = Math.sqrt(6 * ds);
         ou[0] += (this.rnd() * 2 - 1) * nf - ou[0] * df; ou[1] += (this.rnd() * 2 - 1) * nf - ou[1] * df; ou[2] += (this.rnd() * 2 - 1) * nf - ou[2] * df;
         ou[3] += (this.rnd() * 2 - 1) * ns - ou[3] * ds; ou[4] += (this.rnd() * 2 - 1) * ns - ou[4] * ds;
-        mE = Math.max(0.2, 1 + lv.exh[0] * ou[0] + lv.exh[1] * ou[3]);
-        mB = Math.max(0.1, 1 + lv.body[0] * ou[1] + lv.body[1] * ou[4]);
-        mI = Math.max(0.1, 1 + lv.itb[0] * ou[2] + lv.itb[1] * ou[3]);
-        wob = 1 + lv.rpm * ou[4];
+        // Zweimal nachglätten: Ungefilterte Schwankung enthält hohe Frequenzen und macht aus jedem Motorton ein papierartiges Rauschen
+        const o2 = this.ou2, o3 = this.ou3;
+        for (let j = 0; j < 5; j++) { const dj = j < 3 ? df : ds; o2[j] += (ou[j] - o2[j]) * dj; o3[j] += (o2[j] - o3[j]) * dj; }
+        const g = 1.6;   // gleicht die durch das Glätten kleinere Schwankung aus
+        mE = Math.max(0.2, 1 + g * (lv.exh[0] * o3[0] + lv.exh[1] * o3[3]));
+        mB = Math.max(0.1, 1 + g * (lv.body[0] * o3[1] + lv.body[1] * o3[4]));
+        mI = Math.max(0.1, 1 + g * (lv.itb[0] * o3[2] + lv.itb[1] * o3[3]));
+        wob = 1 + lv.rpm * o3[4];
       }
       this.phase += rpm * wob / 120 / sr;
       const wrapped = this.phase >= 1; if (wrapped) this.phase -= 1;
@@ -357,7 +361,7 @@ const ENGINES = {
     itb: { duty: 0.35, floor: 0.06, jitter: 0.12, gain: 0.1, stage: [6500, 8500], tick: 0.0012, tickDecay: 0.992,
       formants: [[620, 2.5, 0.8, 0], [820, 3, 0.35, 0], [1400, 4, 0.16, 0.2], [3500, 4, 0.05, 0]] },
     body: [[68, 4, 0.25], [146, 14, 0.14, 7800], [270, 12, 0.24], [335, 12, 0.18], [530, 10, 0.16]],
-    live: { fastTau: 0.012, slowTau: 0.09, exh: [0.03, 0.05], body: [0.4, 0.35], itb: [0.08, 0.3], rpm: 0.0015 },
+    live: { fastTau: 0.012, slowTau: 0.09, exh: [0.03, 0.05], body: [0.22, 0.4], itb: [0.08, 0.3], rpm: 0.0015 },
     plenum: 0.25, idle: 900, redline: 9000, limiter: 9000, inertia: 0.6, launch: 6300, launchV: 12,
     ratios: [3.75, 2.38, 1.72, 1.34, 1.11, 0.96, 0.84], final: 4.27, wheel: 0.36, box: "pdk7", vmax: 296,
     // Nur Testmodus: echte Fahrphysik statt Tesla-Modell. Drehmoment: Stützstellen außerhalb der beiden Datenblatt-Punkte geschätzt.
