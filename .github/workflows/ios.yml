@@ -5,7 +5,7 @@ name: iOS-App bauen
 on:
   push:
     branches: [main]
-    paths: ["ios/**", "motorsound/index.html", "packaging/demo-fahrt.log", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "motorsound/index.html", ".github/workflows/ios.yml"]
   pull_request:
     paths: ["ios/**", "motorsound/index.html", ".github/workflows/ios.yml"]
   workflow_dispatch:
@@ -24,8 +24,10 @@ jobs:
 
       - name: Version festlegen
         run: |
-          echo "BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
-          echo "VERSION=0.1.${{ github.run_number }}" >> "$GITHUB_ENV"
+          # Plus 19: Das Repo wurde neu angelegt, Versionen müssen über den bisherigen liegen, sonst sieht SideStore kein Update
+          BUILD=$(( ${{ github.run_number }} + 19 ))
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          echo "VERSION=0.1.$BUILD" >> "$GITHUB_ENV"
 
       - name: Projekt erzeugen und bauen
         working-directory: ios
@@ -37,7 +39,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build | tail -n 40
           APP=build/Build/Products/Release-iphoneos/Motorsound.app
-          test -f "$APP/index.html" && test -f "$APP/demo-fahrt.log"
+          test -f "$APP/index.html"
           mkdir -p out/Payload && cp -R "$APP" out/Payload/
           (cd out && zip -qry Motorsound.ipa Payload)
           ls -l out/Motorsound.ipa
@@ -60,7 +62,7 @@ jobs:
               "bundleIdentifier": "de.stefankauselmann.motorsound",
               "developerName": "vwx089",
               "subtitle": "Verbrennerklang aus Tesla-Live-Daten",
-              "localizedDescription": "Synthetischer Motorsound aus Gaspedal, Tempo und Akkuleistung, live vom S3XY Commander (WLAN S3XY_OBD) oder als Demo.",
+              "localizedDescription": "Synthetischer Motorsound aus Gaspedal, Tempo und Akkuleistung, live vom S3XY Commander (WLAN S3XY_OBD) oder in der Simulation.",
               "iconURL": f"https://raw.githubusercontent.com/{repo}/main/ios/icon.png",
               "tintColor": "F0962A",
               "category": "utilities",
