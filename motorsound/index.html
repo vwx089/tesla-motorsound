@@ -223,7 +223,8 @@ class EngineProc extends AudioWorkletProcessor {
         const lope = pr.lope * (1 - load) * (rpm < 1400 ? 1 : 0.3);
         // Schub ist leiser als Zug, aber nicht stumm: Grundpegel steigt mit der Drehzahl
         const base = 0.28 + 0.4 * Math.min(1, rpm / 4500);
-        let a = (base + (1 - base) * load) * this.cylGain[c] * (1 + (this.rnd() - 0.5) * (0.1 + lope));
+        const cg = pr.trimLoad ? 1 + (this.cylGain[c] - 1) * (0.25 + 0.75 * load) : this.cylGain[c];   // Unterschiede zwischen den Zylindern wachsen mit der Last
+        let a = (base + (1 - base) * load) * cg * (1 + (this.rnd() - 0.5) * (0.1 + lope));
         a *= 1 - 0.3 * this.fc;
         if (pr.bankGain) a *= pr.bankGain[banks[c]];       // Bänke klingen verschieden: erzeugt die halbe Zündfrequenz
         this.spawn(a, banks[c], 0);
@@ -279,7 +280,7 @@ class EngineProc extends AudioWorkletProcessor {
         this.boost += (want - this.boost) * (want > this.boost ? 1 / (0.7 * sr) : 1 / (0.12 * sr));
         if (prevBoost > 0.45 && load < 0.08 && this.bov <= 0.01) this.bov = prevBoost;
         this.tph += (1800 + 5200 * this.boost + rpm * 0.35) / sr; this.tph -= Math.floor(this.tph);
-        const whistle = Math.sin(2 * Math.PI * this.tph) * this.boost * this.boost * 0.035;
+        const whistle = Math.sin(2 * Math.PI * this.tph) * this.boost * this.boost * 0.035 * (pr.whistle === undefined ? 1 : pr.whistle);
         const nb = this.rnd() * 2 - 1; this.bovLp += (nb - this.bovLp) * 0.35;
         const pssh = (nb - this.bovLp) * this.bov * 0.22;
         this.bov *= Math.exp(-1 / (0.35 * sr));
@@ -344,11 +345,20 @@ const ENGINES = {
   v8cross: { name: "V8 Crossplane", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 1, 0, 1, 0, 0, 1],
     pipe: [7.1, 8.3], fb: -0.55, loopDamp: 0.45, lp: 900, raw: 0.12, tau: 1.9, noise: 0.35, lope: 0.9, crackle: 1.2, intake: 0.7, cross: 0.35, stereo: true,
     plenum: 1.2, idle: 750, redline: 6500, limiter: 6700, inertia: 1.0 },
+  // Klang abgeglichen mit einer Beschleunigungsaufnahme eines RS6 C6 (laut Video 650 PS statt Serie 580, Aufnahme teils übersteuert):
+  // viele gleich starke halbe Ordnungen statt einer klaren Zündfrequenz, darüber kaum Rauschen (über 4 kHz etwa −44 dB).
   rs6: { name: "Audi RS6 V10 Biturbo", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-    pipe: [5.6, 6.3], fb: -0.55, loopDamp: 0.45, lp: 950, raw: 0.09, tau: 1.6, noise: 0.32, lope: 0.35, crackle: 1.5, intake: 0.5, cross: 0.35, stereo: true, turbo: 1,
+    pipe: [5.6, 6.3], fb: -0.25, loopDamp: 0.45, lp: 950, raw: 0.02, tau: 1.6, noise: 0.1, lope: 0.35, crackle: 1.5, intake: 0.15, cross: 0.35, stereo: true, turbo: 1, whistle: 0.05,
+    level: 1.5, bankGain: [1, 0.9], trimLoad: true, cylTrim: [1.5, 0.6, 1.2, 0.5, 0.9, 1.5, 0.6, 1.3, 0.5, 1.2],
+    body: [[100, 3, 0.12], [137, 5, 0.1], [200, 4, 0.06], [290, 4, 0.12], [400, 3, 0.14], [550, 3, 0.14], [1250, 4, 0.1]],
+    live: { fastTau: 0.012, slowTau: 0.09, exh: [0.03, 0.05], body: [0.22, 0.2], itb: [0, 0], rpm: 0.0015 },
+    upEarly: 50,
     plenum: 1.3, idle: 700, redline: 6800, limiter: 6900, inertia: 0.85,
     // Original-Antrieb: ZF 6HP26A Tiptronic mit Wandler, Achsübersetzung 3,317 (Audi-Datenblatt), 255/40 R19
-    ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.317, wheel: 0.335, box: "zf6", vmax: 250 },
+    ratios: [4.171, 2.340, 1.521, 1.143, 0.867, 0.691], final: 3.317, wheel: 0.335, box: "zf6", vmax: 250,
+    // Nur Testmodus: 580 PS bei 6250–6700, 650 Nm bei 1500–6250, Allrad. Wirkungsgrad und Haftung auf 0–100 und 0–200 abgestimmt.
+    sim: { m: 2100, cda: 0.8, rr: 350, eta: 0.92, grip: 13600, brake: 23000, fric: [25, 0.012],
+      torque: [[1000, 300], [1500, 650], [6250, 650], [6700, 610]] } },
   // 911 GT3 RS (992), 4,0-l-Saugmotor. Zündfolge 1-6-2-4-3-5: 120° gleichmäßig und immer abwechselnd linke/rechte Bank,
   // also je Bank 240° Abstand. Offiziell (Porsche): 386 kW bei 8500, 465 Nm bei 6300, 9000 1/min, PDK-Übersetzungen, Achse 4,27.
   // Klang abgeglichen mit dem Spektrum einer Onboard-Aufnahme eines 992 GT3 (nicht RS, gleiche Motorfamilie), 6500–8800 1/min unter Volllast:
@@ -476,9 +486,9 @@ const SHIFT = {
    gehen direkt in den Zielgang (Zielgang-Strategie). Kein Zündaussetzer, sondern weiche Momentenrücknahme.
    Der Wandler rutscht beim Anfahren bis zur Stall-Drehzahl (Schätzwert 2600 1/min) und wird ab lockGear überbrückt. */
 const TIP = {
-  comfort: { upMs: 600, downMs: 700, kickDelay: 0.35, fart: 0, blip: 0.25, lockGear: 3, upCut: 0.65 },
-  sport:   { upMs: 420, downMs: 550, kickDelay: 0.25, fart: 0, blip: 0.45, lockGear: 2, upCut: 0.7 },
-  track:   { upMs: 320, downMs: 450, kickDelay: 0.2,  fart: 0, blip: 0.6,  lockGear: 2, upCut: 0.75 },
+  comfort: { upMs: 600, downMs: 700, kickDelay: 0.35, fart: 0, blip: 0.25, lockGear: 3, upCut: 0.65, brakeDown: 1500 },
+  sport:   { upMs: 420, downMs: 550, kickDelay: 0.25, fart: 0, blip: 0.45, lockGear: 2, upCut: 0.7, brakeDown: 2600 },
+  track:   { upMs: 320, downMs: 450, kickDelay: 0.2,  fart: 0, blip: 0.6,  lockGear: 2, upCut: 0.75, brakeDown: 3600 },
 };
 const STALL = 2600;
 /* Porsche PDK, 7 Gänge, GT-Abstimmung. Belegt sind Porsches „unter 100 ms“ für manuelles Hochschalten und die Onboard-Aufnahme eines
@@ -547,7 +557,7 @@ function engineStep(dt, now) {
       if (!eng.shift) eng.rate = (eng.rate || 0) * 0.8 + Math.max(0, r) * 0.2;
       lead = 110 + eng.rate * 0.025;   // ein Frame plus Reaktionszeit des Steuergeräts; in der Momentenphase steht die Drehzahl
     }
-    const upAt = wot ? pr.redline - lead - (conv ? 250 : 0) : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
+    const upAt = wot ? pr.redline - lead - (pr.upEarly !== undefined ? pr.upEarly : conv ? 250 : 0) : mode.up[1] < 0 ? pr.redline + mode.up[1] : mode.up[1];
     const up = wot ? upAt : mode.up[0] + (upAt - mode.up[0]) * Math.pow(pedal, 1.3);
     const down = mode.down[0] + (mode.down[1] - mode.down[0]) * pedal;
     // Gas weg: Gang erst halten (Motorbremse, Schubknallen), dann gemächlich Gang für Gang hoch
@@ -586,7 +596,7 @@ function engineStep(dt, now) {
         startShift(eng.gear - 1, now, mode, wot);
       } else if (mode.brakeDown && car.brake && now - eng.lastShift > 120 && cur < mode.brakeDown && lower < (eng.gear === 2 ? 5500 : pr.redline - 1500)) {
         // Beim Bremsen schaltet das PDK schneller zurück als im Zug, in den 1. Gang erst bei niedrigem Tempo
-        startShift(eng.gear - 1, now, { ...mode, downMs: Math.min(mode.downMs, 200) }, false);
+        startShift(eng.gear - 1, now, { ...mode, downMs: Math.min(mode.downMs, conv ? 400 : 200) }, false);
       }
     }
     target = gearRpm(eng.gear, vms);
@@ -782,7 +792,12 @@ showRanges();
 function pickShift(v) { shiftSel.value = v; document.querySelectorAll("[data-shift]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.shift === v))); try { localStorage.setItem("vk-shift", v); } catch {} }
 document.querySelectorAll("[data-shift]").forEach(b => b.onclick = () => pickShift(b.dataset.shift));
 try { const v = localStorage.getItem("vk-shift"); if (SHIFT[v]) pickShift(v); } catch {}
-for (const k in ENGINES) { const o = document.createElement("option"); o.value = k; o.textContent = ENGINES[k].name; engineSel.append(o); }
+// Auf echte Aufnahmen und Originaldaten abgestimmte Autos zuerst, Rest als generisch markiert
+for (const [label, keys] of [["Abgestimmt", ["rs6", "gt3rs"]], ["Generisch", Object.keys(ENGINES).filter(k => !["rs6", "gt3rs"].includes(k))]]) {
+  const g = document.createElement("optgroup"); g.label = label;
+  for (const k of keys) { const o = document.createElement("option"); o.value = k; o.textContent = ENGINES[k].name; g.append(o); }
+  engineSel.append(g);
+}
 function pickEngine(k) { eng.prof = ENGINES[k]; eng.rpm = eng.prof.idle; eng.gear = Math.min(eng.gear, gb().r.length); if (node) node.port.postMessage({ profile: eng.prof }); try { localStorage.setItem("vk-engine", k); } catch {} }
 let savedEngine = null; try { savedEngine = localStorage.getItem("vk-engine"); } catch {}
 engineSel.value = ENGINES[savedEngine] ? savedEngine : "rs6";
