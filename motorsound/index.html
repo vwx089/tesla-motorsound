@@ -1,145 +1,143 @@
-<title>Verbrenner-Klang</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Motorsound</title>
 <style>
-/* Layout: ein Kombiinstrument. Links der Drehzahlmesser, rechts Quelle, Motor und Steuerung. Bewusst nur dunkel, wie ein Cockpit bei Nacht. */
+/* Hochformat: Instrument oben, Bedienung darunter. Querformat und Tablet: nebeneinander. Bewusst nur dunkel, wie ein Cockpit bei Nacht.
+   Nur Systemschriften: Im WLAN S3XY_OBD gibt es kein Internet. */
 :root {
-  --bg: #0e1217;
-  --panel: #161c23;
-  --line: #27313c;
-  --fg: #e6e9ee;
-  --muted: #8b96a3;
+  --bg: #0b0e12;
+  --panel: #151a20;
+  --line: #262e37;
+  --fg: #eef1f4;
+  --muted: #8a94a0;
   --needle: #f2a33a;
   --red: #e5483f;
   --ok: #4cc38a;
-  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --font-body: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: -apple-system, "SF Pro Display", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body: -apple-system, "SF Pro Text", system-ui, "Helvetica Neue", Arial, sans-serif;
   color-scheme: dark;
 }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--fg); font-family: var(--font-body); margin: 0; }
-.wrap { max-width: 1120px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }
-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
-h1 { font-family: var(--font-display); font-weight: 700; font-size: 2rem; letter-spacing: .02em; margin: 0; text-wrap: balance; }
-.sub { color: var(--muted); font-size: .9rem; max-width: 60ch; margin: 0; }
-.grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
-.cluster { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-canvas#tacho { width: 100%; max-width: 100%; aspect-ratio: 1.45; display: block; }
-.readouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.ro { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ro b { font-family: var(--font-display); font-size: 1.9rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
-.ro span { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
-.bars { display: grid; gap: 8px; }
-.bar { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 3.5em; gap: 10px; align-items: center; font-size: .8rem; color: var(--muted); }
-.bar i { display: block; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; position: relative; }
-.bar i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); background: var(--c, var(--needle)); }
-.bar em { font-style: normal; font-family: var(--font-mono); text-align: right; color: var(--fg); }
-.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-section.box { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-section.box h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0; font-weight: 600; }
-.seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.seg button, .btn { font: inherit; font-size: .88rem; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; cursor: pointer; }
-.seg button[aria-pressed="true"] { border-color: var(--needle); color: var(--needle); }
-.btn.primary { background: var(--needle); color: #1b1206; border-color: var(--needle); font-weight: 600; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); margin: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+.app { max-width: 1120px; margin: 0 auto; min-height: 100%; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
+@media (min-width: 700px) { .app { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; } }
+.gauge, .controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+canvas#tacho { width: 100%; aspect-ratio: 1.45; display: block; }
+.readouts { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: -6px; }
+.ro { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.ro b { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ro.main b { font-size: 2.6rem; font-weight: 700; line-height: 1; }
+.ro span { color: var(--muted); font-size: .72rem; letter-spacing: .04em; }
+.readouts { align-items: end; }
+.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bar { display: flex; flex-direction: column; gap: 5px; font-size: .72rem; color: var(--muted); letter-spacing: .04em; }
+.bar i { display: block; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; position: relative; }
+.bar i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); background: var(--c, var(--needle)); border-radius: 3px; }
+button { font: inherit; color: var(--fg); cursor: pointer; }
+.start { font-size: 1.05rem; font-weight: 600; padding: 15px; border-radius: 14px; border: 1px solid var(--needle); background: var(--needle); color: #1b1206; }
+.start.on { background: transparent; color: var(--needle); }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; background: var(--panel); border-radius: 11px; padding: 3px; }
+.seg button { font-size: .9rem; font-weight: 500; background: transparent; border: 0; border-radius: 8px; padding: 9px 6px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: #2a323c; color: var(--fg); }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acts button { font-size: .88rem; background: var(--panel); border: 0; border-radius: 10px; padding: 11px 6px; }
+.acts button[aria-pressed="true"] { color: var(--needle); }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--needle); outline-offset: 2px; }
-select, input[type="text"] { font: inherit; font-size: .9rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
-label.row { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 10px; align-items: center; font-size: .85rem; color: var(--muted); }
+.card { background: var(--panel); border-radius: 14px; padding: 4px 14px; display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 10px; align-items: center; min-height: 48px; font-size: .92rem; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row.stack { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 0; }
+.row .seg { background: var(--bg); }
+select, input[type="text"] { font: inherit; font-size: .92rem; color: var(--fg); background: transparent; border: 0; padding: 8px 0; width: 100%; text-align: right; text-align-last: right; min-width: 0; }
+select option { color: #000; }
 .rng { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.rng output { font-family: var(--font-mono); font-size: .8rem; color: var(--fg); min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.rng output { font-size: .82rem; color: var(--muted); min-width: 3.6em; text-align: right; font-variant-numeric: tabular-nums; }
 input[type="range"] { width: 100%; accent-color: var(--needle); }
+details summary { list-style: none; min-height: 48px; display: flex; align-items: center; justify-content: space-between; font-size: .92rem; border-top: 1px solid var(--line); cursor: pointer; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: "›"; color: var(--muted); font-size: 1.2rem; }
+details[open] summary::after { transform: rotate(90deg); }
 .pedals { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; }
-.pedal { font: inherit; font-weight: 600; font-size: 1rem; padding: 18px 0; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.pedal { font-weight: 600; font-size: 1rem; padding: 24px 0; border-radius: 14px; border: 0; background: var(--panel); touch-action: none; }
 .pedal.gas.on { background: var(--needle); color: #1b1206; }
 .pedal.brk.on { background: var(--red); }
-.hint { font-size: .78rem; color: var(--muted); margin: 0; }
-.status { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.status { font-size: .85rem; color: var(--muted); text-align: center; padding: 2px 8px; }
+.status:empty { display: none; }
 .status.ok { color: var(--ok); }
 .status.err { color: var(--red); }
-kbd { font-family: var(--font-mono); font-size: .75rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+/* iPhone quer: alles Wichtige ohne Scrollen sichtbar */
+@media (orientation: landscape) and (max-height: 500px) {
+  .gauge { gap: 8px; }
+  canvas#tacho { max-height: 58vh; width: auto; margin: 0 auto; }
+  .bars { display: none; }
+  .readouts { margin-top: 0; }
+  .ro.main b { font-size: 2rem; }
+  .ro b { font-size: 1.3rem; }
+  .start { padding: 9px; font-size: .95rem; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
-<div class="wrap">
-  <header>
-    <div>
-      <h1>Verbrenner-Klang</h1>
-      <p class="sub">Synthetischer Motorsound aus Pedal, Drehmoment und Geschwindigkeit, mit virtuellem Getriebe. Daten kommen aus der Simulation, live vom S3XY Commander über die Bridge, oder aus einer Aufnahme.</p>
+<main class="app">
+  <div class="gauge">
+    <canvas id="tacho" width="900" height="620" aria-label="Drehzahlmesser"></canvas>
+    <div class="readouts">
+      <div class="ro"><b id="roRpm">0</b><span>U/min</span></div>
+      <div class="ro main"><b id="roSpeed">0</b><span>km/h</span></div>
+      <div class="ro"><b id="roTq">0</b><span>kW</span></div>
     </div>
-    <button class="btn primary" id="startBtn">Motor starten</button>
-  </header>
+    <div class="bars">
+      <div class="bar">Gas<i id="barPedal"></i></div>
+      <div class="bar">Last<i id="barLoad" style="--c: var(--ok)"></i></div>
+    </div>
+    <button class="start" id="startBtn">Motor starten</button>
+  </div>
 
-  <div class="grid">
-    <div class="cluster">
-      <canvas id="tacho" width="900" height="620" aria-label="Drehzahlmesser"></canvas>
-      <div class="readouts">
-        <div class="ro"><b id="roGear">P</b><span>Gang</span></div>
-        <div class="ro"><b id="roRpm">0</b><span>1/min</span></div>
-        <div class="ro"><b id="roSpeed">0</b><span>km/h</span></div>
-        <div class="ro"><b id="roTq">0</b><span>kW Tesla</span></div>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Datenquelle">
+      <button id="srcLive" aria-pressed="false">Live</button>
+      <button id="srcSim" aria-pressed="true">Simulation</button>
+    </div>
+    <div class="status" id="status" role="status"></div>
+    <div id="panelSim" class="side">
+      <div class="pedals">
+        <button class="pedal brk" id="brkBtn">Bremse</button>
+        <button class="pedal gas" id="gasBtn">Gas</button>
       </div>
-      <div class="bars">
-        <div class="bar">Gaspedal <i id="barPedal"></i><em id="vPedal">0 %</em></div>
-        <div class="bar">Motorlast <i id="barLoad" style="--c: var(--ok)"></i><em id="vLoad">0 %</em></div>
-        <div class="bar">Rekuperation <i id="barRegen" style="--c: var(--red)"></i><em id="vRegen">0</em></div>
+      <div class="acts">
+        <button id="demoBtn">Demofahrt</button>
+        <button id="parkBtn">P / D</button>
+      </div>
+      <div class="card">
+        <label class="row" for="gasSlider">Gas halten <span class="rng"><input type="range" id="gasSlider" min="0" max="100" value="0"><output id="gasOut" for="gasSlider">0 %</output></span></label>
       </div>
     </div>
-
-    <div class="side">
-      <section class="box">
-        <h2>Datenquelle</h2>
-        <div class="seg" role="group" aria-label="Datenquelle">
-          <button id="srcSim" aria-pressed="true">Simulation</button>
-          <button id="srcLive" aria-pressed="false">Live (Bridge)</button>
-          <button id="srcReplay" aria-pressed="false">Aufnahme</button>
+    <div id="panelLive" class="side" hidden>
+      <div class="card" id="bridgeCard">
+        <label class="row" for="bridgeUrl">Bridge <input type="text" id="bridgeUrl" value="http://localhost:8787/stream" spellcheck="false"></label>
+        <div class="row"><span></span><button id="connectBtn">Verbinden</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <label class="row" for="engineSel">Motor <select id="engineSel"></select></label>
+      <div class="row stack">Schaltung
+        <div class="seg" role="group" aria-label="Schaltung">
+          <button data-shift="comfort" aria-pressed="false">Komfort</button>
+          <button data-shift="sport" aria-pressed="true">Sport</button>
+          <button data-shift="track">Track</button>
         </div>
-        <div id="panelSim" class="side">
-          <div class="pedals">
-            <button class="pedal brk" id="brkBtn">Bremse</button>
-            <button class="pedal gas" id="gasBtn">Gas</button>
-          </div>
-          <label class="row" for="gasSlider">Gas fest <span class="rng"><input type="range" id="gasSlider" min="0" max="100" value="0"><output id="gasOut" for="gasSlider">0 %</output></span></label>
-          <div class="seg">
-            <button id="demoBtn">Demofahrt</button>
-            <button id="parkBtn">P / D umschalten</button>
-          </div>
-          <p class="hint">Tastatur: <kbd>↑</kbd> oder <kbd>W</kbd> Gas, <kbd>↓</kbd> oder <kbd>S</kbd> Bremse, <kbd>1</kbd> bis <kbd>9</kbd> Teilgas. In P dreht der Motor frei hoch.</p>
-        </div>
-        <div id="panelLive" class="side" hidden>
-          <label class="row" for="bridgeUrl">Bridge <input type="text" id="bridgeUrl" value="http://localhost:8787/stream" spellcheck="false"></label>
-          <div class="seg"><button id="connectBtn">Verbinden</button></div>
-          <p class="hint">Live braucht die Bridge (<kbd>node commander-bridge.mjs</kbd>) auf einem Gerät im WLAN „S3XY_OBD“. Öffne die Seite dann direkt von der Bridge unter http://localhost:8787, weil die veröffentlichte Seite keine lokalen Verbindungen aufbauen darf.</p>
-        </div>
-        <div id="panelReplay" class="side" hidden>
-          <input type="file" id="replayFile" accept=".log,.txt,.candump">
-          <div class="seg"><button id="sampleBtn">Beispielaufnahme erzeugen</button></div>
-          <p class="hint">Format der Bridge-Aufnahme (<kbd>ms bus id daten</kbd>) oder candump (<kbd>(zeit) can0 257#…</kbd>).</p>
-        </div>
-        <div class="status" id="status">Simulation bereit.</div>
-      </section>
-
-      <section class="box">
-        <h2>Motor und Getriebe</h2>
-        <label class="row" for="engineSel">Motor
-          <select id="engineSel"></select>
-        </label>
-        <label class="row" for="shiftSel">Schaltung
-          <select id="shiftSel">
-            <option value="comfort">Komfort, früh hochschalten</option>
-            <option value="sport" selected>Sport</option>
-            <option value="track">Rennstrecke, bis Begrenzer</option>
-          </select>
-        </label>
-        <label class="row" for="vol">Lautstärke <span class="rng"><input type="range" id="vol" min="0" max="100" value="70"><output id="volOut" for="vol">70 %</output></span></label>
-        <label class="row" for="tqMax">Volllast bei <span class="rng"><input type="range" id="tqMax" min="50" max="500" step="10" value="140"><output id="tqMaxOut" for="tqMax">140 kW</output></span></label>
-        <p class="hint">Ab wie viel kW Antriebsleistung der Verbrenner als „Vollgas“ klingt. Kleiner Wert: der Motor klingt schon bei sanfter Fahrt angestrengt. Großer Wert: nur bei voller Beschleunigung.</p>
-      </section>
+      </div>
+      <label class="row" for="vol">Lautstärke <span class="rng"><input type="range" id="vol" min="0" max="100" value="70"><output id="volOut" for="vol">70 %</output></span></label>
+      <details>
+        <summary>Erweitert</summary>
+        <label class="row" for="tqMax">Volllast ab <span class="rng"><input type="range" id="tqMax" min="50" max="500" step="10" value="140"><output id="tqMaxOut" for="tqMax">140 kW</output></span></label>
+      </details>
     </div>
   </div>
-</div>
+</main>
 
 <script>
 "use strict";
@@ -161,7 +159,7 @@ class EngineProc extends AudioWorkletProcessor {
     this.lpLoop = [0, 0]; this.m1 = [0, 0]; this.m2 = [0, 0]; this.dc = [0, 0]; this.dcx = [0, 0];
     this.ib = 0; this.il = 0; this.seed = 22222;
     this.boost = 0; this.tph = 0; this.bov = 0; this.bovLp = 0;
-    this.tickEnv = 0; this.tickLp = 0; this.tickPh = 0;
+    this.tickEnv = 0; this.tickLp = 0; this.tickPh = 0; this.fc = 0;
     this.port.onmessage = (e) => {
       if (e.data.profile) this.setProfile(e.data.profile);
       if (e.data.state) Object.assign(this.p, e.data.state);
@@ -189,13 +187,15 @@ class EngineProc extends AudioWorkletProcessor {
     const pr = this.prof;
     if (!pr) { L.fill(0); if (R !== L) R.fill(0); return true; }
     const sr = this.sr, p = this.p, n = L.length;
-    const kR = 1 - Math.exp(-1 / (0.012 * sr)), kL = 1 - Math.exp(-1 / (0.03 * sr));
+    const kR = 1 - Math.exp(-1 / (0.012 * sr)), kL = 1 - Math.exp(-1 / (0.03 * sr)), kF = 1 - Math.exp(-1 / (0.06 * sr));
     const pipe = [Math.round(pr.pipe[0] * sr / 1000), Math.round(pr.pipe[1] * sr / 1000)];
     const offs = pr.offsets, banks = pr.banks, nc = offs.length;
     for (let i = 0; i < n; i++) {
       this.rpm += (p.rpm - this.rpm) * kR;
       this.load += (p.load - this.load) * kL;
       this.thr += (p.throttle - this.thr) * kL;
+      // Schubabschaltung: keine Verbrennung mehr, der Motor pumpt nur noch Luft. Leiser, dumpfer, kaum noch Knallen.
+      this.fc += ((p.fc || 0) - this.fc) * kF;
       const rpm = Math.max(this.rpm, 1), load = this.load;
       const prev = this.phase;
       // Lebendigkeit: langsam und schnell schwankende Pegel je Klanganteil, dazu kleine Drehzahlschwankung (Rauschprozesse)
@@ -220,9 +220,10 @@ class EngineProc extends AudioWorkletProcessor {
         // Schub ist leiser als Zug, aber nicht stumm: Grundpegel steigt mit der Drehzahl
         const base = 0.28 + 0.4 * Math.min(1, rpm / 4500);
         let a = (base + (1 - base) * load) * this.cylGain[c] * (1 + (this.rnd() - 0.5) * (0.1 + lope));
+        a *= 1 - 0.3 * this.fc;
         if (pr.bankGain) a *= pr.bankGain[banks[c]];       // Bänke klingen verschieden: erzeugt die halbe Zündfrequenz
         this.spawn(a, banks[c], 0);
-        if (p.overrun > 0 && this.rnd() < 0.05 * p.overrun * pr.crackle) this.spawn(0.6 + 1.4 * this.rnd(), banks[c], 1);
+        if (p.overrun > 0 && this.rnd() < 0.05 * p.overrun * pr.crackle * (1 - 0.5 * this.fc)) this.spawn(0.6 + 1.4 * this.rnd(), banks[c], 1);
       }
       const tau = pr.tau / 1000 * (0.55 + 0.45 * Math.min(1, 1200 / rpm));
       let x0 = 0, x1 = 0;
@@ -234,7 +235,7 @@ class EngineProc extends AudioWorkletProcessor {
         if (q.pop) { v = q.amp * (this.rnd() * 2 - 1) * Math.exp(-t / 0.004) * 1.4; if (t > 0.03) q.on = false; }
         else {
           const body = u * Math.exp(1 - u);
-          const nz = (this.rnd() * 2 - 1) * Math.exp(-u * 1.6) * pr.noise * (0.35 + load);
+          const nz = (this.rnd() * 2 - 1) * Math.exp(-u * 1.6) * pr.noise * (0.35 + load) * (1 - 0.6 * this.fc);
           v = q.amp * (body + nz);
           if (u > 9) q.on = false;
         }
@@ -250,7 +251,7 @@ class EngineProc extends AudioWorkletProcessor {
         d[w] = y;
         // Abgasklappe (nur Profile mit flap): zu = dumpfer, öffnet mit Drehzahl oder bei hoher Last
         const flap = pr.flap ? 0.55 + 0.45 * Math.max(Math.min(1, Math.max(0, (rpm - pr.flap[0]) / (pr.flap[1] - pr.flap[0]))), Math.min(1, Math.max(0, (load - 0.6) / 0.25))) : 1;
-        const fc = pr.lp * (0.75 + 0.45 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline)) * flap;
+        const fc = pr.lp * (0.75 + 0.45 * load) * (0.7 + 0.6 * Math.min(1, rpm / pr.redline)) * flap * (1 - 0.3 * this.fc);
         const a1 = 1 - Math.exp(-2 * Math.PI * fc / sr);
         this.m1[b] += (y - this.m1[b]) * a1; this.m2[b] += (this.m1[b] - this.m2[b]) * a1;
         ys[b] = this.m2[b] * 0.7 + y * pr.raw * flap;
@@ -336,10 +337,10 @@ registerProcessor('engine-proc', EngineProc);
    offsets: Zündzeitpunkt jedes Zylinders als Anteil von 720° (in Zündreihenfolge).
    banks: welche Abgasbank (0/1) der Zylinder speist. pipe: Rohr-Laufzeit in ms. */
 const ENGINES = {
-  v8cross: { name: "V8 Crossplane (Muscle Car)", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 1, 0, 1, 0, 0, 1],
+  v8cross: { name: "V8 Crossplane", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 1, 0, 1, 0, 0, 1],
     pipe: [7.1, 8.3], fb: -0.55, loopDamp: 0.45, lp: 900, raw: 0.12, tau: 1.9, noise: 0.35, lope: 0.9, crackle: 1.2, intake: 0.7, cross: 0.35, stereo: true,
     plenum: 1.2, idle: 750, redline: 6500, limiter: 6700, inertia: 1.0 },
-  rs6: { name: "V10 Biturbo 5.0 TFSI (RS6-C6-Stil)", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+  rs6: { name: "Audi RS6 V10 Biturbo", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [5.6, 6.3], fb: -0.55, loopDamp: 0.45, lp: 950, raw: 0.09, tau: 1.6, noise: 0.32, lope: 0.35, crackle: 1.5, intake: 0.5, cross: 0.35, stereo: true, turbo: 1,
     plenum: 1.3, idle: 700, redline: 6800, limiter: 6900, inertia: 0.85,
     // Original-Antrieb: ZF 6HP26A Tiptronic mit Wandler, Achsübersetzung 3,317 (Audi-Datenblatt), 255/40 R19
@@ -350,7 +351,7 @@ const ENGINES = {
   // 3. Ordnung am stärksten, 1,5. Ordnung nur 4–6 dB darunter, Hüllkurve ab 500 Hz stark fallend (1000 Hz −24 dB, 2000 Hz −39 dB).
   // Die tiefen Ordnungen (0,5/1/2/2,5) sind dort echte Töne, kein Fahrtwind: body bildet sie nach. live trifft die gemessenen
   // Pegelschwankungen (40–250 Hz etwa 25–30 %, Crestfaktor 2,7). Ein Teil der Abstimmung folgt der Messung, nicht der Physik.
-  gt3rs: { name: "Boxer-Sechszylinder 4.0 Sauger (911 GT3 RS 992)", offsets: [0, 1/6, 2/6, 3/6, 4/6, 5/6], banks: [0, 1, 0, 1, 0, 1],
+  gt3rs: { name: "Porsche GT3 RS", offsets: [0, 1/6, 2/6, 3/6, 4/6, 5/6], banks: [0, 1, 0, 1, 0, 1],
     pipe: [3.2, 3.45], fb: -0.35, loopDamp: 0.7, lp: 600, raw: 0.01, tau: 0.75, noise: 0.1, lope: 0.18, crackle: 0.35, intake: 0.08, cross: 0.82, stereo: true,
     cutPop: 0.03, flap: [3000, 4400], driveLoad: 1.0, level: 1.5, bankGain: [1, 0.76], cylTrim: [1.103, 0.895, 0.931, 0.797, 0.965, 1.307],
     itb: { duty: 0.35, floor: 0.06, jitter: 0.12, gain: 0.1, stage: [6500, 8500], tick: 0.0012, tickDecay: 0.992,
@@ -362,16 +363,16 @@ const ENGINES = {
     // Nur Testmodus: echte Fahrphysik statt Tesla-Modell. Drehmoment: Stützstellen außerhalb der beiden Datenblatt-Punkte geschätzt.
     sim: { m: 1525, cda: 0.85, rr: 300, eta: 0.84, grip: 15200, brake: 19000, fric: [15, 0.008],
       torque: [[1000, 230], [2000, 320], [3000, 370], [4000, 400], [5000, 430], [6300, 465], [7500, 450], [8500, 434], [9000, 410]] } },
-  v8flat: { name: "V8 Flatplane (Supersportwagen)", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 0, 1, 0, 1, 0, 1],
+  v8flat: { name: "V8 Flatplane", offsets: [0, .125, .25, .375, .5, .625, .75, .875], banks: [0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [4.2, 4.6], fb: -0.45, loopDamp: 0.6, lp: 2200, raw: 0.2, tau: 1.0, noise: 0.45, lope: 0.2, crackle: 1.5, intake: 1.0, cross: 0.4, stereo: true,
     plenum: 0.9, idle: 1000, redline: 8500, limiter: 8700, inertia: 0.6 },
-  i6: { name: "Reihensechser (Sportlimousine)", offsets: [0, 1/6, 2/6, 3/6, 4/6, 5/6], banks: [0, 0, 0, 1, 1, 1],
+  i6: { name: "Reihensechser", offsets: [0, 1/6, 2/6, 3/6, 4/6, 5/6], banks: [0, 0, 0, 1, 1, 1],
     pipe: [5.5, 5.6], fb: -0.5, loopDamp: 0.55, lp: 1700, raw: 0.15, tau: 1.3, noise: 0.4, lope: 0.15, crackle: 1.0, intake: 0.9, cross: 0.9, stereo: false,
     plenum: 1.0, idle: 700, redline: 7200, limiter: 7400, inertia: 0.8 },
-  boxer4: { name: "Boxer-Vierzylinder (Rallye)", offsets: [0, .29, .5, .79], banks: [0, 1, 0, 1],
+  boxer4: { name: "Boxer-Vierzylinder", offsets: [0, .29, .5, .79], banks: [0, 1, 0, 1],
     pipe: [6.2, 8.8], fb: -0.5, loopDamp: 0.5, lp: 1100, raw: 0.15, tau: 2.2, noise: 0.5, lope: 0.4, crackle: 1.6, intake: 1.2, cross: 0.8, stereo: false,
     plenum: 1.0, idle: 800, redline: 7000, limiter: 7200, inertia: 0.7 },
-  v10: { name: "V10 (Hochdrehzahl)", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+  v10: { name: "V10 Hochdrehzahl", offsets: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9], banks: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
     pipe: [3.6, 3.9], fb: -0.4, loopDamp: 0.65, lp: 2600, raw: 0.22, tau: 0.85, noise: 0.45, lope: 0.1, crackle: 1.2, intake: 1.1, cross: 0.45, stereo: true,
     plenum: 0.8, idle: 1000, redline: 8700, limiter: 8900, inertia: 0.55 },
 };
@@ -407,12 +408,6 @@ function applyFrame(id, bytes) {
   if (id === 0x132 && v.BattVoltage132 !== null) car.powerKw = v.BattVoltage132 * v.SmoothBattCurrent132 / 1000;
   car.seen++; car.lastFrame = performance.now();
 }
-/* Gegenstück zum Dekoder: baut Frames für Beispielaufnahmen. */
-function putSig(bytes, start, len, signed, scale, offset, value) {
-  let raw = Math.round((value - offset) / scale); if (signed && raw < 0) raw += 2 ** len;
-  for (let i = 0; i < len; i++) { const bit = start + i; if (Math.floor(raw / 2 ** i) % 2) bytes[bit >> 3] |= 1 << (bit & 7); }
-}
-
 /* ===================== Simulation (Tesla-ähnliche Fahrphysik) ===================== */
 const sim = { v: 0, gas: 0, brake: 0, gear: "D", hold: 0, slider: 0, demo: null };
 function simStep(dt) {
@@ -498,9 +493,11 @@ const BOXES = { zf6: TIP, pdk7: PDK };
    4. Sammlerfüllung: tau = 120 · plenum / Drehzahl, plenum = Sammlervolumen / Hubraum, üblich 0,8–1,5 (Denso-Patent US6543416).
       Unten träger als oben. Einzeldrosseln (GT3 RS) haben kaum Volumen hinter der Klappe, dieser Wert ist geschätzt.
    Beim Gaswegnehmen laufen 3 und 4 halb so lang. Das Getriebe nutzt nur Stufe 1. */
+const FUEL_CUT_DELAY = 0.35, REFIRE_RPM = 500;   // Schätzwerte: Abschaltung nach dem Gaswegnehmen, Wiedereinsetzen über Leerlauf
+const LIMIT_BAND = 300;                            // Begrenzer: Drehzahl fällt so weit, bevor die Zündung wieder einsetzt
 const PEDAL_TAU = 0.04, POWER_TAU = 0.06, DEAD_TIME = 30, THROTTLE_TAU = 0.03;
 const lag = (x, want, tau, dt) => x + (want - x) * (1 - Math.exp(-dt / (want < x ? tau * 0.5 : tau)));
-const eng = { pF: 0, pwF: 0, hist: [], tv: 0, thr: 0, pwD: 0, rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, wotT: 0, limiter: false, prof: null,
+const eng = { fuelCut: false, cutT: 0, refireT: -1e9, limCut: false, jerkA: 90, pF: 0, pwF: 0, hist: [], tv: 0, thr: 0, pwD: 0, rpm: 800, gear: 1, load: 0, cutUntil: 0, lastShift: 0, overrun: 0, liftT: 0, coastT: 0, wotT: 0, limiter: false, prof: null,
   shift: null, next: 0, jerkT: -1, wasCoast: 0 };
 const gb = () => ({ r: eng.prof.ratios || RATIOS, f: eng.prof.final || FINAL, w: eng.prof.wheel || WHEEL_R });
 function gearRpm(g, vms) { const G = gb(); return vms / (2 * Math.PI * G.w) * 60 * G.r[g - 1] * G.f; }
@@ -532,7 +529,8 @@ function engineStep(dt, now) {
   if (!driving || vms < 0.3 && pedal < 0.02) {
     // Stand bzw. P/N: Leerlauf, im Stand freies Hochdrehen mit dem Gaspedal
     eng.gear = 1; eng.shift = null; eng.next = 0;
-    target = pr.idle + (!driving ? thr * (pr.redline - pr.idle) : 0);
+    // Ohne Last dreht der Motor bei Vollgas bis in den Begrenzer
+    target = pr.idle + (!driving ? thr * (pr.limiter + 200 - pr.idle) : 0);
   } else {
     // Vollgas (über der Kickdown-Schwelle): in jedem Modus bis kurz vor die Rotlinie ausdrehen
     const wot = pedal > mode.kick;
@@ -558,7 +556,7 @@ function engineStep(dt, now) {
     eng.tipping = tipping;
     const reacted = now - (eng.pTip || -1e9) > mode.kickDelay * 1000;
     // Lastwechsel: wer aus dem Schub wieder Gas gibt, bekommt einen kleinen Ruck im Antriebsstrang
-    if (pedal >= 0.05 && eng.wasCoast > 0.3) eng.jerkT = now;
+    if (pedal >= 0.05 && eng.wasCoast > 0.3) { eng.jerkT = now; eng.jerkA = 90; }
     eng.wasCoast = eng.coastT;
     const coasting = eng.coastT > 0;
     const nG = gb().r.length;
@@ -592,7 +590,8 @@ function engineStep(dt, now) {
       // Wandler offen: Motor dreht beim Anfahren bis zur Stall-Drehzahl hoch, Schlupf baut sich ab, je mehr die Räder aufholen
       if (eng.gear < mode.lockGear) {
         const wheel = target, stall = pr.idle + thr * (STALL - pr.idle);
-        target = Math.max(stall, wheel * (1 + 0.08 * thr) + thr * 120);
+        // Das Steuergerät schaltet hoch, bevor der Schlupf den Motor in den Begrenzer treibt
+        target = Math.min(Math.max(stall, wheel * (1 + 0.08 * thr) + thr * 120), Math.max(wheel, pr.redline - 50));
       }
     } else if (eng.gear === 1) { const slip = pr.idle + thr * (pr.launch ? pr.launch - pr.idle : 2600); const k = Math.min(1, vms / (pr.launchV || 7)); target = Math.max(target, slip * (1 - k) + target * k); }
     target = Math.max(target, pr.idle);
@@ -619,31 +618,46 @@ function engineStep(dt, now) {
   const upRate = (freeRev ? 9000 : 20000) / pr.inertia, dnRate = (freeRev ? 4500 : 14000) / pr.inertia;
   const d = target - eng.rpm;
   if (eng.shift) eng.rpm = target;
+  else if (eng.limCut) eng.rpm -= (6000 / pr.inertia) * dt;       // Zündung aus: Drehzahl fällt frei
   else eng.rpm += Math.max(-dnRate * dt, Math.min(upRate * dt, d));
   // Lastwechselruck: kurz gedämpftes Schwingen des Antriebsstrangs (~3 Hz)
-  if (eng.jerkT >= 0) { const t = (now - eng.jerkT) / 1000; if (t < 0.8) eng.rpm += 90 * Math.sin(2 * Math.PI * 3 * t) * Math.exp(-t / 0.22); else eng.jerkT = -1; }
-  // Begrenzer
-  if (eng.rpm >= pr.limiter) eng.limiter = true; else if (eng.rpm < pr.limiter - 250) eng.limiter = false;
-  if (eng.limiter && thr > 0.1) eng.rpm = pr.limiter - 120 * Math.random();
+  if (eng.jerkT >= 0) { const t = (now - eng.jerkT) / 1000; if (t < 0.8) eng.rpm += eng.jerkA * Math.sin(2 * Math.PI * 3 * t) * Math.exp(-t / 0.22); else eng.jerkT = -1; }
+  // Begrenzer: Zündung aus an der Grenze, wieder an, wenn die Drehzahl um LIMIT_BAND gefallen ist. Ergibt das rhythmische Hämmern.
+  if (thr <= 0.1) eng.limCut = false;
+  else if (eng.limCut) { if (eng.rpm <= pr.limiter - LIMIT_BAND) eng.limCut = false; }
+  else if (eng.rpm >= pr.limiter) eng.limCut = true;
+  eng.rpm = Math.min(eng.rpm, pr.limiter);
+  eng.limiter = eng.limCut || (thr > 0.1 && eng.rpm > pr.limiter - LIMIT_BAND - 50 && target >= pr.limiter);
   // Last: Pedal ist das unmittelbare Signal, Drehmoment bestätigt es
   // Stufenlos: Eine harte Schwelle bei kleinem Pedalwert ließ die Last um bis zu 45 % springen
   const open = Math.min(1, thr / 0.05);
   let load = Math.min(1, thr * 0.75 + Math.max(0, tqN) * 0.45) * open;
   if (freeRev) load = Math.min(1, thr * 0.9 + Math.min(0.3, Math.max(0, d) / 1000)) * open;
   if (shiftLoad !== null) load = shiftLoad < 0 ? Math.max(load, -shiftLoad) : load * shiftLoad;
+  // Schubabschaltung: kurz nach dem Gaswegnehmen wird der Sprit abgestellt. Fällt die Drehzahl knapp über den Leerlauf,
+  // setzt die Verbrennung wieder ein: hörbar als kleiner Lastbuckel und leichter Ruck.
+  const refireAt = pr.idle + REFIRE_RPM;
+  eng.cutT = thr < 0.02 ? eng.cutT + dt : 0;
+  if (!eng.fuelCut && eng.cutT > FUEL_CUT_DELAY && eng.rpm > refireAt + 300) eng.fuelCut = true;
+  else if (eng.fuelCut && (thr >= 0.02 || eng.rpm < refireAt)) {
+    eng.fuelCut = false;
+    if (thr < 0.05) { eng.refireT = now; eng.jerkT = now; eng.jerkA = 45; }
+  }
+  const sinceFire = (now - eng.refireT) / 1000;
+  if (sinceFire < 0.5) load = Math.max(load, 0.3 * Math.exp(-sinceFire / 0.12));
   eng.load = load;
   // Schubbetrieb: nach dem Gaswegnehmen bei hoher Drehzahl knallt und knistert es
   if (thr < 0.04 && eng.rpm > 2300) { eng.liftT += dt; } else eng.liftT = 0;
   const regen = Math.max(0, -tqN);
   eng.overrun = eng.liftT > 0 ? Math.min(1, Math.max(0, 1.6 - eng.liftT) * (eng.rpm / pr.redline) * (0.6 + regen)) : 0;
-  return { rpm: eng.rpm, load, throttle: thr, cut: (now < eng.cutUntil || (eng.limiter && thr > 0.1 && Math.random() < 0.5)) ? 1 : 0, overrun: eng.overrun, regen };
+  return { rpm: eng.rpm, load, throttle: thr, cut: (now < eng.cutUntil || eng.limCut) ? 1 : 0, overrun: eng.overrun, regen, fc: eng.fuelCut ? 1 : 0 };
 }
 
 /* ===================== Audio-Setup ===================== */
 let ac = null, node = null;
 const startBtn = document.getElementById("startBtn");
 async function startAudio() {
-  if (ac) { if (ac.state === "running") { await ac.suspend(); startBtn.textContent = "Motor starten"; } else { await ac.resume(); startBtn.textContent = "Motor aus"; } return; }
+  if (ac) { if (ac.state === "running") { await ac.suspend(); startBtn.textContent = "Motor starten"; startBtn.classList.remove("on"); } else { await ac.resume(); startBtn.textContent = "Motor aus"; startBtn.classList.add("on"); } return; }
   ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
   if (ac.audioWorklet && window.isSecureContext && !/[?&#]sp\b/.test(location.href)) {
     const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
@@ -653,11 +667,10 @@ async function startAudio() {
     // Ohne HTTPS (z. B. Tesla-Browser auf http://192.168.x.x) gibt es kein AudioWorklet.
     // Dann läuft derselbe Prozessor im Hauptthread über einen ScriptProcessor.
     node = scriptProcessorEngine(ac);
-    setStatus("Audio im Kompatibilitätsmodus (ohne HTTPS).");
   }
   node.connect(ac.destination);
   node.port.postMessage({ profile: eng.prof });
-  startBtn.textContent = "Motor aus";
+  startBtn.textContent = "Motor aus"; startBtn.classList.add("on");
 }
 startBtn.addEventListener("click", () => startAudio().catch(e => setStatus("Audio konnte nicht starten: " + e.message, "err")));
 
@@ -673,36 +686,38 @@ function scriptProcessorEngine(ctx) {
   return sp;
 }
 /* ===================== Datenquellen ===================== */
-let source = "sim", es = null, replay = null, keepManual = false;
+let source = "sim", es = null, keepManual = false;
 // Läuft die Seite von der Bridge (iPhone-App oder Node-Bridge), lauscht sie von selbst und wechselt auf Live, sobald Daten kommen
 const autoBridge = location.protocol === "http:" && location.port === "8787";
 const statusEl = document.getElementById("status");
 function setStatus(t, cls) { statusEl.textContent = t; statusEl.className = "status" + (cls ? " " + cls : ""); }
 function setSource(s) {
   source = s;
-  for (const [id, key] of [["srcSim", "sim"], ["srcLive", "live"], ["srcReplay", "replay"]]) document.getElementById(id).setAttribute("aria-pressed", String(key === s));
+  for (const [id, key] of [["srcSim", "sim"], ["srcLive", "live"]]) document.getElementById(id).setAttribute("aria-pressed", String(key === s));
   document.getElementById("panelSim").hidden = s !== "sim";
-  document.getElementById("panelLive").hidden = s !== "live";
-  document.getElementById("panelReplay").hidden = s !== "replay";
+  document.getElementById("panelLive").hidden = s !== "live" || autoBridge;
   if (s !== "live" && es && !autoBridge) { es.close(); es = null; }
-  if (s !== "replay") replay = null;
-  if (s === "sim") setStatus("Simulation bereit.");
-  if (s === "live" && !es) setStatus("Nicht verbunden.");
-  if (s === "replay") setStatus("Aufnahme wählen oder Beispiel erzeugen.");
+  setStatus("");
+  if (s === "sim") { sim.gas = 0; sim.brake = 0; }
 }
+document.getElementById("srcLive").onclick = () => { setSource("live"); keepManual = false; };
 // Von Hand gewählte Quelle gilt, bis der Commander einmal weg war und wiederkommt
 document.getElementById("srcSim").onclick = () => { setSource("sim"); keepManual = true; };
 document.getElementById("srcLive").onclick = () => setSource("live");
-document.getElementById("srcReplay").onclick = () => setSource("replay");
 
-let fpsCount = 0, fpsT = performance.now();
+// Status im Live-Betrieb: nur das, was der Fahrer wissen muss. Die iPhone-App verrät zusätzlich die Netzwerk-Erlaubnis.
+let lanDenied = false, liveT = 0;
+function liveStatus(now) {
+  if (now - liveT < 500) return; liveT = now;
+  if (now - lastBridgeRx < BRIDGE_GAP) { setStatus("Commander verbunden", "ok"); return; }
+  if (lanDenied) { setStatus("Bitte „Lokales Netzwerk“ in den Einstellungen für Motorsound erlauben.", "err"); }
+  else setStatus(autoBridge ? "Suche Commander … iPhone im WLAN S3XY_OBD?" : "Nicht verbunden.");
+  if (autoBridge) fetch("/status").then(r => r.json()).then(j => { lanDenied = j.lan === "NEIN"; }).catch(() => {});
+}
 function connectBridge() {
   if (es) es.close();
   const url = document.getElementById("bridgeUrl").value.trim();
-  if (source === "live") setStatus("Verbinde mit " + url + " …");
   try { es = new EventSource(url); } catch (e) { setStatus("Verbindung nicht möglich: " + e.message, "err"); return; }
-  es.onopen = () => { if (source === "live") setStatus("Verbunden, warte auf CAN-Daten …", "ok"); };
-  es.onerror = () => { if (source === "live") setStatus("Keine Verbindung zur Bridge. Läuft sie, und ist die Seite von der Bridge geöffnet?", "err"); };
   es.onmessage = (ev) => {
     let frames; try { frames = JSON.parse(ev.data); } catch { return; }
     if (!frames.length) return;
@@ -711,58 +726,14 @@ function connectBridge() {
     lastBridgeRx = now;
     if (source === "sim" && !keepManual) setSource("live");
     if (source !== "live") return;
-    for (const [id, , hex] of frames) { applyFrame(id, hexToBytes(hex)); fpsCount++; }
+    for (const [id, , hex] of frames) applyFrame(id, hexToBytes(hex));
   };
 }
 const BRIDGE_GAP = 3000; let lastBridgeRx = -1e9;
 document.getElementById("connectBtn").onclick = connectBridge;
 if (location.protocol === "http:" && location.port) document.getElementById("bridgeUrl").value = location.origin + "/stream";
+document.getElementById("bridgeCard").hidden = autoBridge;
 if (autoBridge) connectBridge();
-
-function parseLog(text) {
-  const out = [];
-  for (const line of text.split(/\r?\n/)) {
-    let m = line.match(/^\s*(\d+(?:\.\d+)?)\s+(\d+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]*)\s*$/);
-    if (m) { out.push({ t: +m[1], id: parseInt(m[3], 16), bytes: hexToBytes(m[4]) }); continue; }
-    m = line.match(/^\s*\((\d+(?:\.\d+)?)\)\s+\S+\s+([0-9a-fA-F]+)#([0-9a-fA-F]*)/);
-    if (m) out.push({ t: +m[1] * 1000, id: parseInt(m[2], 16), bytes: hexToBytes(m[3]) });
-  }
-  if (out.length) { const t0 = out[0].t; for (const f of out) f.t -= t0; }
-  return out;
-}
-function startReplay(frames, label) {
-  if (!frames.length) { setStatus("Keine lesbaren Frames in der Datei.", "err"); return; }
-  replay = { frames, i: 0, t0: performance.now(), label };
-  setStatus(`Spiele ${label}: ${frames.length} Frames, ${(frames.at(-1).t / 1000).toFixed(1)} s`, "ok");
-}
-document.getElementById("replayFile").onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  startReplay(parseLog(await f.text()), f.name);
-};
-document.getElementById("sampleBtn").onclick = () => {
-  // Erzeugt eine Beispielfahrt als echte CAN-Frames und spielt sie über den Dekoder ab
-  const lines = []; const save = { ...sim }; sim.v = 0; sim.gear = "D";
-  const script = t => t < 1 ? 0 : t < 9 ? 1 : t < 12 ? 0 : t < 16 ? 0.35 : t < 19 ? 0.9 : t < 23 ? 0 : 0.2;
-  for (let t = 0; t < 26; t += 0.02) {
-    sim.gas = script(t); sim.brake = t > 23 ? 0.4 : 0; simStep(0.02);
-    const ms = Math.round(t * 1000);
-    const f257 = new Array(8).fill(0); putSig(f257, 12, 12, false, 0.08, -40, car.speed);
-    const f118 = new Array(8).fill(0); putSig(f118, 32, 8, false, 0.4, 0, car.pedal * 100); putSig(f118, 21, 3, false, 1, 0, 4); putSig(f118, 19, 2, false, 1, 0, car.brake);
-    const f108 = new Array(8).fill(0); putSig(f108, 27, 13, true, 2, 0, car.torqueR);
-    const f186 = new Array(8).fill(0); putSig(f186, 27, 13, true, 2, 0, car.torqueF);
-    const f132 = new Array(8).fill(0); putSig(f132, 0, 16, false, 0.01, 0, 360); putSig(f132, 16, 16, true, -0.1, 0, car.powerKw * 1000 / 360);
-    const hx = b => b.map(x => x.toString(16).padStart(2, "0")).join("");
-    lines.push(`${ms} 0 257 ${hx(f257)}`, `${ms} 0 118 ${hx(f118)}`, `${ms} 0 108 ${hx(f108)}`, `${ms} 0 186 ${hx(f186)}`, `${ms} 0 132 ${hx(f132)}`);
-  }
-  Object.assign(sim, save, { gas: 0, brake: 0 });
-  startReplay(parseLog(lines.join("\n")), "Beispielaufnahme");
-};
-function replayStep(now) {
-  if (!replay) return;
-  const t = now - replay.t0;
-  while (replay.i < replay.frames.length && replay.frames[replay.i].t <= t) { const f = replay.frames[replay.i++]; applyFrame(f.id, f.bytes); }
-  if (replay.i >= replay.frames.length) { setStatus(`${replay.label} zu Ende.`); replay = null; car.pedal = 0; }
-}
 
 /* ===================== Simulation: Bedienung ===================== */
 function bindHold(el, on, off) {
@@ -786,7 +757,7 @@ window.addEventListener("keyup", e => {
   if (["ArrowUp", "w", "W"].includes(e.key)) { sim.gas = 0; gasBtn.classList.remove("on"); }
   if (["ArrowDown", "s", "S"].includes(e.key)) { sim.brake = 0; brkBtn.classList.remove("on"); }
 });
-document.getElementById("parkBtn").onclick = () => { sim.gear = sim.gear === "D" ? "P" : "D"; if (sim.gear === "P") sim.v = 0; };
+document.getElementById("parkBtn").onclick = (e) => { sim.gear = sim.gear === "D" ? "P" : "D"; if (sim.gear === "P") sim.v = 0; e.target.setAttribute("aria-pressed", String(sim.gear === "P")); };
 document.getElementById("demoBtn").onclick = () => {
   if (sim.demo) { sim.demo = null; sim.gas = 0; sim.brake = 0; return; }
   let t = 0; sim.gear = "D";
@@ -799,11 +770,14 @@ document.getElementById("demoBtn").onclick = () => {
 };
 
 /* ===================== Motor- und Profilauswahl ===================== */
-const engineSel = document.getElementById("engineSel"), shiftSel = document.getElementById("shiftSel"), tqMaxEl = document.getElementById("tqMax"), volEl = document.getElementById("vol");
+const engineSel = document.getElementById("engineSel"), shiftSel = { value: "sport" }, tqMaxEl = document.getElementById("tqMax"), volEl = document.getElementById("vol");
 function showRanges() { document.getElementById("tqMaxOut").textContent = tqMaxEl.value + " kW"; document.getElementById("volOut").textContent = volEl.value + " %"; document.getElementById("gasOut").textContent = gasSlider.value + " %"; }
 for (const el of [tqMaxEl, volEl, gasSlider]) el.addEventListener("input", showRanges);
 window.addEventListener("keydown", () => setTimeout(showRanges));
 showRanges();
+function pickShift(v) { shiftSel.value = v; document.querySelectorAll("[data-shift]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.shift === v))); try { localStorage.setItem("vk-shift", v); } catch {} }
+document.querySelectorAll("[data-shift]").forEach(b => b.onclick = () => pickShift(b.dataset.shift));
+try { const v = localStorage.getItem("vk-shift"); if (SHIFT[v]) pickShift(v); } catch {}
 for (const k in ENGINES) { const o = document.createElement("option"); o.value = k; o.textContent = ENGINES[k].name; engineSel.append(o); }
 function pickEngine(k) { eng.prof = ENGINES[k]; eng.rpm = eng.prof.idle; eng.gear = Math.min(eng.gear, gb().r.length); if (node) node.port.postMessage({ profile: eng.prof }); try { localStorage.setItem("vk-engine", k); } catch {} }
 let savedEngine = null; try { savedEngine = localStorage.getItem("vk-engine"); } catch {}
@@ -847,26 +821,19 @@ let last = performance.now();
 function tick() {
   const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (source === "sim") simStep(dt);
-  if (source === "replay") replayStep(now);
   // Reißt die Verbindung im Live-Betrieb ab, darf der Motor nicht mit dem letzten Pedalwert weiterlaufen
   if (source === "live" && now - lastBridgeRx > BRIDGE_GAP) { car.pedal = 0; car.powerKw = 0; car.brake = 0; car.speed = 0; }
   const st = engineStep(dt, now);
   if (node) node.port.postMessage({ state: { ...st, gain: volEl.value / 100 } });
-  if (source === "live" && es && now - fpsT > 1000) {
-    const age = car.lastFrame ? ((now - car.lastFrame) / 1000).toFixed(1) : "–";
-    setStatus(`Live: ${fpsCount} Frames/s, letzter vor ${age} s · v=${car.speed.toFixed(0)} km/h, Pedal ${(car.pedal * 100).toFixed(0)} %, ${car.gear}`, fpsCount ? "ok" : "err");
-    fpsCount = 0; fpsT = now;
-  }
+  if (source === "live") liveStatus(now);
   const driving = car.gear === "D" || car.gear === "R";
   const gearLabel = !driving ? car.gear : car.gear === "R" ? "R" : String(eng.gear);
   drawTacho(st.rpm, gearLabel, eng.limiter);
-  $("roGear").textContent = gearLabel;
   $("roRpm").textContent = Math.round(st.rpm / 10) * 10;
   $("roSpeed").textContent = Math.round(car.speed);
   $("roTq").textContent = Math.round(car.powerKw);
-  $("barPedal").style.setProperty("--v", (car.pedal * 100).toFixed(0) + "%"); $("vPedal").textContent = (car.pedal * 100).toFixed(0) + " %";
-  $("barLoad").style.setProperty("--v", (st.load * 100).toFixed(0) + "%"); $("vLoad").textContent = (st.load * 100).toFixed(0) + " %";
-  $("barRegen").style.setProperty("--v", (st.regen * 100).toFixed(0) + "%"); $("vRegen").textContent = (st.regen * 100).toFixed(0) + " %";
+  $("barPedal").style.setProperty("--v", (car.pedal * 100).toFixed(0) + "%");
+  $("barLoad").style.setProperty("--v", (st.load * 100).toFixed(0) + "%");
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

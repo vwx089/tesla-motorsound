@@ -3,7 +3,6 @@ import Network
 
 /// Swift-Version von bridge/commander-bridge.mjs:
 ///  - holt CAN-Frames per Panda-UDP vom S3XY Commander (192.168.4.1:1338, Handshake "ehllo")
-///  - oder spielt die mitgelieferte Aufnahme demo-fahrt.log ab
 ///  - liefert index.html und den SSE-Stream /stream auf http://localhost:8787 aus,
 ///    genau wie die Node-Bridge. Die Web-App bleibt dadurch unverändert.
 final class Bridge: ObservableObject {
@@ -15,7 +14,6 @@ final class Bridge: ObservableObject {
 
     @Published var status = "startet …"
     @Published var fps = 0
-    @Published var demo = false { didSet { if demo != oldValue { let v = demo; q.async { self.restartSource(demo: v) } } } }
 
     private let q = DispatchQueue(label: "motorsound.bridge")
     private var listener: NWListener?
@@ -26,7 +24,6 @@ final class Bridge: ObservableObject {
     private var timers: [DispatchSourceTimer] = []
     private var sourceTimers: [DispatchSourceTimer] = []
     private var started = false
-    private var useDemo = false
     private var browser: NWBrowser?
     private var wifi: NWPathMonitor?
     private var wifiUp = false
@@ -46,7 +43,7 @@ final class Bridge: ObservableObject {
             self.timers.append(self.timer(every: 0.02) { self.flush() })
             self.timers.append(self.timer(every: 15) { self.broadcast(": ping\n\n") })
             self.timers.append(self.timer(every: 1) { self.tick() })
-            self.restartSource(demo: false)
+            self.restartSource()
         }
     }
 
@@ -63,7 +60,6 @@ final class Bridge: ObservableObject {
     private func tick() {
         let n = frameCount; frameCount = 0
         DispatchQueue.main.async { self.fps = n }
-        if useDemo { setStatus("Demo: \(n) Frames/s"); return }
         if Date().timeIntervalSince(lastRx) > 5 {
             // Diagnose für die Fehlersuche im Auto
             var msg = "Keine Daten · Lokales Netzwerk: \(lanPermission)"
@@ -103,7 +99,7 @@ final class Bridge: ObservableObject {
         m.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             let up = path.status == .satisfied
-            if up && !self.wifiUp && self.started && !self.useDemo { self.restartSource(demo: false) }
+            if up && !self.wifiUp && self.started { self.restartSource() }
             self.wifiUp = up
         }
         m.start(queue: q)
@@ -113,18 +109,17 @@ final class Bridge: ObservableObject {
     /// App kommt zurück in den Vordergrund: iOS hat den Socket evtl. stillgelegt
     func wake() {
         q.async {
-            guard self.started, !self.useDemo, Date().timeIntervalSince(self.lastRx) > 2 else { return }
-            self.restartSource(demo: false)
+            guard self.started, Date().timeIntervalSince(self.lastRx) > 2 else { return }
+            self.restartSource()
         }
     }
 
     // MARK: Datenquelle
 
-    private func restartSource(demo: Bool) {
+    private func restartSource() {
         sourceTimers.forEach { $0.cancel() }; sourceTimers = []
         stopUDP()
-        useDemo = demo
-        if useDemo { startReplay() } else { startUDP() }
+        startUDP()
     }
 
     private func onFrame(id: UInt32, bus: UInt32, data: Data) {
@@ -238,39 +233,6 @@ final class Bridge: ObservableObject {
         setStatus("Sende \"\(Self.hello)\" an \(Self.host):\(Self.udpPort) …")
     }
 
-    private lazy var demoFrames: [(Double, UInt32, UInt32, Data)] = {
-        guard let url = Bundle.main.url(forResource: "demo-fahrt", withExtension: "log"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        var out: [(Double, UInt32, UInt32, Data)] = []
-        for line in text.split(separator: "\n") {
-            let p = line.split(separator: " ")
-            guard p.count >= 3, let t = Double(p[0]), let bus = UInt32(p[1]), let id = UInt32(p[2], radix: 16) else { continue }
-            let hex = p.count > 3 ? Array(p[3].utf8) : []
-            var bytes = [UInt8](); bytes.reserveCapacity(hex.count / 2)
-            var i = 0
-            while i + 1 < hex.count, let v = UInt8(String(decoding: hex[i...i+1], as: UTF8.self), radix: 16) { bytes.append(v); i += 2 }
-            out.append((t, bus, id, Data(bytes)))
-        }
-        return out
-    }()
-
-    private func startReplay() {
-        let frames = demoFrames
-        guard let first = frames.first?.0 else { setStatus("Demo-Aufnahme fehlt"); return }
-        var i = 0
-        var start = Date()
-        setStatus("Demo: \(frames.count) Frames")
-        sourceTimers.append(timer(every: 0.005) { [weak self] in
-            guard let self else { return }
-            let t = Date().timeIntervalSince(start) * 1000
-            while i < frames.count, frames[i].0 - first <= t {
-                let f = frames[i]; i += 1
-                self.onFrame(id: f.2, bus: f.1, data: f.3)
-            }
-            if i >= frames.count { i = 0; start = Date() }
-        })
-    }
-
     // MARK: HTTP + SSE
 
     private func startHTTP() {
@@ -324,6 +286,9 @@ final class Bridge: ObservableObject {
             c.stateUpdateHandler = { [weak self] st in
                 switch st { case .failed, .cancelled: self?.clients[key] = nil; default: break }
             }
+        } else if path == "/status" {
+            let body = "{\"lan\":\"\(lanPermission)\"}"
+            send(c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)", close: true)
         } else if path == "/" || path == "/index.html" {
             let body = Data(page().utf8)
             var res = Data("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
@@ -341,7 +306,7 @@ final class Bridge: ObservableObject {
     private func page() -> String {
         let body = Bundle.main.url(forResource: "index", withExtension: "html")
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "<p>index.html fehlt im App-Bundle</p>"
-        return "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"></head><body>\(body)</body></html>"
+        return "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no\"></head><body>\(body)</body></html>"
     }
 
     private func flush() {

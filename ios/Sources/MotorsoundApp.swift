@@ -18,22 +18,8 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Picker("Quelle", selection: $bridge.demo) {
-                    Text("Live").tag(false)
-                    Text("Demo").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 150)
-                Circle().fill(bridge.fps > 0 ? Color.green : Color.orange).frame(width: 8, height: 8)
-                Text(bridge.status).font(.caption).foregroundStyle(.secondary).lineLimit(3).minimumScaleFactor(0.8)
-                Spacer()
-            }
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Color.black)
-            WebView(url: URL(string: "http://localhost:\(Bridge.httpPort)/")!)
-        }
+        WebView(url: URL(string: "http://localhost:\(Bridge.httpPort)/")!)
+            .ignoresSafeArea()
         .background(Color.black)
         .preferredColorScheme(.dark)
         .onChange(of: phase) { _, p in if p == .active { bridge.wake() } }

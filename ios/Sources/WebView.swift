@@ -26,6 +26,7 @@ struct WebView: UIViewRepresentable {
         web.isOpaque = false
         web.backgroundColor = .black
         web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.scrollView.bounces = false
         #if DEBUG
         if #available(iOS 16.4, *) { web.isInspectable = true }   // Safari > Entwickler > iPhone
         #endif

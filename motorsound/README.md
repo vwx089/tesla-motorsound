@@ -38,7 +38,7 @@ Alle Intel/Little-Endian. Das Gaspedal ist der wichtigste Vorteil gegenüber GPS
 
 ## Was im Ordner liegt
 
-- `index.html`: die App. Sound-Engine, virtuelles Getriebe, Tesla-CAN-Dekoder, Drehzahlmesser. Drei Datenquellen: Simulation (Gas/Bremse per Knopf oder Tastatur), Live über die Bridge, Abspielen einer Aufnahme.
+- `index.html`: die App. Sound-Engine, virtuelles Getriebe, Tesla-CAN-Dekoder, Drehzahlmesser. Zwei Datenquellen: Simulation (Gas/Bremse per Knopf oder Tastatur) und Live über die Bridge.
 - `bridge/commander-bridge.mjs`: kleines Node-Programm ohne Abhängigkeiten. Spricht Panda-UDP mit dem Commander, reicht die Frames per Server-Sent Events an den Browser und kann alles mitschneiden. Nötig, weil ein Browser kein UDP kann.
 - `bridge/fake-commander.mjs`: simulierter Commander zum Testen ohne Auto.
 
@@ -76,7 +76,7 @@ Mit einem Laptop (oder Android-Handy mit Termux und Node):
 3. `node commander-bridge.mjs --stats --record fahrt1.log`
 4. Im Terminal erscheint alle 5 s, welche CAN-IDs ankommen. Wichtig sind 257, 118, 108 (und 186 bei Dual Motor).
 5. Eine kurze Runde fahren: Stand mit Gas in P, normal anfahren, einmal kräftig beschleunigen, Gas weg und rekuperieren.
-6. `fahrt1.log` in den Projektordner legen. Die App spielt sie unter „Aufnahme“ ab, und ich kann die Signale damit prüfen und das Getriebe abstimmen.
+6. `fahrt1.log` in den Projektordner legen. Damit lassen sich die Signale prüfen und das Getriebe abstimmen.
 
 Falls keine Daten kommen: `--local-port 1338` probieren (manche Panda-Server senden fest an Port 1338 zurück), und prüfen, ob die S3XY-App dabei getrennt sein muss.
 
